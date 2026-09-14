@@ -1,0 +1,7 @@
+{
+  "name": "RIFAS - Fintech Ticketing Platform",
+  "description": "Plataforma minimalista de gestión de rifas, ticketing fintech, registro móvil con QR y sorteos en vivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
