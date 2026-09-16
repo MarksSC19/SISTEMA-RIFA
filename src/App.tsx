@@ -19,12 +19,24 @@ import { MustChangePasswordModal } from './components/MustChangePasswordModal';
 import api from './services/api';
 
 export default function App() {
-  // Version check to guarantee strictly single Gran Rifa 2026 with 31 admins and 7 official prizes
-  const DATA_VERSION_KEY = 'rifas_version_single_raffle_v8';
+  // Version check para limpiar sesiones anteriores de prueba y arrancar en Login limpio
+  const DATA_VERSION_KEY = 'rifas_version_v12_dni_clean';
   const isUpToDate = typeof window !== 'undefined' && localStorage.getItem(DATA_VERSION_KEY) === 'true';
+
+  // Si la versión es antigua, limpiar sesiones guardadas de pruebas anteriores
+  if (typeof window !== 'undefined' && !isUpToDate) {
+    try {
+      localStorage.removeItem('rifas_auth_user');
+      localStorage.removeItem('rifas_jwt_token');
+      localStorage.setItem(DATA_VERSION_KEY, 'true');
+    } catch {
+      // safe fallback
+    }
+  }
 
   // Authentication state persisted in localStorage
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    if (!isUpToDate) return null;
     const saved = localStorage.getItem('rifas_auth_user');
     return saved ? JSON.parse(saved) : null;
   });
@@ -236,14 +248,14 @@ export default function App() {
     ? Math.max(...tickets.map(t => t.number)) + 1 
     : 1;
 
-  // Cuota disponible para el administrador en sesión (máx 20 por admin)
+  // Cuota disponible para el operador en sesión (20 tickets por admin/superadmin)
   const currentAdmin = admins.find(a => 
-    (currentUser?.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
     (currentUser?.dni && a.dni === currentUser.dni) || 
+    (currentUser?.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
     (currentUser?.name && a.name === currentUser.name)
   );
   const currentAdminSold = currentAdmin?.totalSold || 0;
-  const availableQuota = currentUser?.role === 'super_admin' ? 620 : Math.max(0, 20 - currentAdminSold);
+  const availableQuota = Math.max(0, 20 - currentAdminSold);
 
   // Login handler
   const handleLogin = (user: AuthUser) => {
@@ -688,6 +700,10 @@ export default function App() {
           onSaveAdmin={handleSaveAdmin}
           onDeleteAdmin={handleDeleteAdmin}
           onSaveConfig={handleSaveConfig}
+          onOpenRegisterTicket={() => setIsRegisterModalOpen(true)}
+          onSwitchToSalesPanel={() => setCurrentView('admin')}
+          personalSold={currentAdminSold}
+          personalQuota={20}
           onUpdateCurrentUser={(updated) => {
             setCurrentUser(updated);
             try {

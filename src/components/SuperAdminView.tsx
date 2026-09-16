@@ -53,8 +53,11 @@ interface Props {
   onSaveRaffle: (raffle: Raffle) => void;
   onDeleteRaffle: (raffleId: string) => void;
   onSaveAdmin: (admin: AdminUser, password?: string) => void;
-  onDeleteAdmin: (adminId: string) => void;
   onSaveConfig?: (config: SystemConfig) => void;
+  onOpenRegisterTicket?: () => void;
+  onSwitchToSalesPanel?: () => void;
+  personalSold?: number;
+  personalQuota?: number;
   onUpdateCurrentUser?: (user: AuthUser) => void;
   onLogout?: () => void;
 }
@@ -77,6 +80,10 @@ export const SuperAdminView: React.FC<Props> = ({
   onSaveAdmin,
   onDeleteAdmin,
   onSaveConfig,
+  onOpenRegisterTicket,
+  onSwitchToSalesPanel,
+  personalSold = 0,
+  personalQuota = 20,
   onUpdateCurrentUser,
   onLogout,
 }) => {
@@ -245,7 +252,32 @@ export const SuperAdminView: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Botón para que el Superadmin (Jheyson) venda sus boletos */}
+          {onOpenRegisterTicket && (
+            <button
+              id="superadmin-sell-tickets-btn"
+              onClick={onOpenRegisterTicket}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#059669] hover:bg-[#047857] text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+              title="Vender boletos como operador (Meta: 20 boletos)"
+            >
+              <TicketIcon className="w-3.5 h-3.5" />
+              <span>Vender Mis Boletos ({personalSold}/{personalQuota})</span>
+            </button>
+          )}
+
+          {onSwitchToSalesPanel && (
+            <button
+              id="superadmin-switch-sales-btn"
+              onClick={onSwitchToSalesPanel}
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-[#F5F5F3] hover:bg-[#E5E7EB] text-[#374151] hover:text-[#0F1115] text-xs font-semibold rounded-xl transition-colors cursor-pointer border border-[#E5E7EB]"
+              title="Ver mi talonario de ventas de operador"
+            >
+              <span>Mi Panel de Ventas</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#059669]" />
+            </button>
+          )}
+
           {/* Notifications */}
           <div className="relative">
             <button
@@ -429,6 +461,44 @@ export const SuperAdminView: React.FC<Props> = ({
                       <Users className="w-3.5 h-3.5 text-[#059669]" />
                       <span>Gestionar Admins</span>
                     </button>
+                  </div>
+                </div>
+
+                {/* Banner de Talonario de Operador para el Superadministrador */}
+                <div className="bg-gradient-to-r from-[#0F1115] via-[#1E293B] to-[#0F1115] text-white rounded-2xl p-5 shadow-sm border border-gray-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-[#10B981] bg-[#10B981]/15 px-2.5 py-0.5 rounded-full border border-[#10B981]/30">
+                        Mi Cuota Personal de Ventas · {currentUser?.name || 'Jheyson Ryam Jorge Vasquez'}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-white">
+                      Talonario Operador: <span className="text-[#10B981] font-mono">{personalSold} / {personalQuota} tickets vendidos</span>
+                    </h3>
+                    <p className="text-xs text-gray-300">
+                      Como Superadministrador también operas tus 20 boletos (S/ {(personalSold * 10).toFixed(2)} recaudados de tu meta de S/ {(personalQuota * 10).toFixed(2)}).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {onOpenRegisterTicket && (
+                      <button
+                        onClick={onOpenRegisterTicket}
+                        className="flex-1 sm:flex-none px-4 py-2.5 bg-[#059669] hover:bg-[#047857] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <TicketIcon className="w-4 h-4" />
+                        <span>Vender Mis Boletos</span>
+                      </button>
+                    )}
+                    {onSwitchToSalesPanel && (
+                      <button
+                        onClick={onSwitchToSalesPanel}
+                        className="flex-1 sm:flex-none px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl border border-white/15 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Mi Panel de Operador</span>
+                        <ArrowUpRight className="w-3.5 h-3.5 text-[#10B981]" />
+                      </button>
+                    )}
                   </div>
                 </div>
 

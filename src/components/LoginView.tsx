@@ -3,12 +3,12 @@ import { motion } from 'motion/react';
 import { 
   ShieldCheck, 
   Lock, 
-  Mail, 
   ArrowRight, 
   AlertCircle,
   Eye,
   EyeOff,
-  Ticket
+  Ticket,
+  CreditCard
 } from 'lucide-react';
 import { AuthUser } from '../types';
 import { DEMO_AUTH_USERS } from '../mockData';
@@ -19,7 +19,7 @@ interface Props {
 }
 
 export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
-  const [emailOrDni, setEmailOrDni] = useState('');
+  const [dni, setDni] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -29,36 +29,33 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setErrorMessage('');
 
-    const cleanInput = emailOrDni.trim();
-    if (!cleanInput) {
-      setErrorMessage('Por favor ingrese su correo electrónico o número de DNI');
+    const cleanDni = dni.trim().replace(/\D/g, '');
+    if (!cleanDni || cleanDni.length < 8) {
+      setErrorMessage('Por favor ingrese un número de DNI válido de 8 dígitos');
       return;
     }
     if (!password.trim()) {
-      setErrorMessage('Por favor ingrese su contraseña');
+      setErrorMessage('Por favor ingrese su contraseña (su DNI si es la primera vez)');
       return;
     }
 
     setIsLoading(true);
 
-    // 1. Autenticación real y segura en PostgreSQL
-    api.login(cleanInput, password)
+    // 1. Autenticación contra PostgreSQL (puerto 5433)
+    api.login(cleanDni, password.trim())
       .then((data) => {
         setIsLoading(false);
         onLoginSuccess(data.user);
       })
       .catch((apiErr) => {
-        // Fallback local en memoria si estuviera desconectado
-        const cleanLower = cleanInput.toLowerCase();
-        const found = DEMO_AUTH_USERS.find(
-          u => u.email.toLowerCase() === cleanLower || (u.dni && u.dni === cleanInput)
-        );
+        // Fallback local en memoria
+        const found = DEMO_AUTH_USERS.find(u => u.dni === cleanDni);
 
         if (found) {
           if (
-            password === found.password || 
-            (found.dni && password === found.dni) ||
-            password === '70905188'
+            password.trim() === found.password || 
+            password.trim() === cleanDni ||
+            (found.dni && password.trim() === found.dni)
           ) {
             setIsLoading(false);
             const { password: _, ...userWithoutPass } = found;
@@ -68,13 +65,13 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
         }
 
         setIsLoading(false);
-        setErrorMessage(apiErr.message || 'Credenciales incorrectas. Verifique su usuario y contraseña.');
+        setErrorMessage(apiErr.message || 'Credenciales incorrectas. Verifique su número de DNI y contraseña.');
       });
   };
 
   return (
     <div className="min-h-screen bg-[#F5F5F3] font-['Geist',sans-serif] text-[#0F1115] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Subtle ambient lighting */}
+      {/* Ambient background lighting */}
       <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#059669]/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-[#0F1115]/5 rounded-full blur-3xl pointer-events-none" />
 
@@ -93,7 +90,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
             RIFAS <span className="text-[#059669]">PRO</span>
           </h1>
           <p className="text-xs text-[#6B7280] mt-1">
-            Plataforma Oficial de Rifas Junín · Acceso Seguro al Sistema
+            Plataforma Oficial de Rifas Junín · Acceso por DNI
           </p>
         </div>
 
@@ -102,7 +99,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
           <div className="mb-6 text-center">
             <h2 className="text-lg font-bold text-[#0F1115]">Iniciar Sesión</h2>
             <p className="text-xs text-[#6B7280] mt-1">
-              Ingrese con sus credenciales autorizadas (DNI o Correo y Contraseña).
+              Ingrese con su número de DNI autorizado para acceder al sistema.
             </p>
           </div>
 
@@ -120,19 +117,22 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
           <form onSubmit={handleFormSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-[#374151] uppercase tracking-wider mb-1.5">
-                Correo Electrónico o N° DNI
+                Número de DNI (8 Dígitos)
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <CreditCard className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
-                  id="login-email-input"
+                  id="login-dni-input"
                   type="text"
                   required
-                  value={emailOrDni}
-                  onChange={(e) => setEmailOrDni(e.target.value)}
-                  placeholder="Ingrese su correo o DNI"
+                  maxLength={8}
+                  pattern="\d{8}"
+                  value={dni}
+                  onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej. 70905188"
                   autoComplete="username"
-                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0F1115]/10 focus:border-[#0F1115] transition-all"
+                  autoFocus
+                  className="w-full pl-10 pr-4 py-2.5 text-xs font-mono font-bold bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0F1115]/10 focus:border-[#0F1115] transition-all"
                 />
               </div>
             </div>
@@ -149,7 +149,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
+                  placeholder="Su contraseña (su DNI si es primera vez)"
                   autoComplete="current-password"
                   className="w-full pl-10 pr-10 py-2.5 text-xs bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0F1115]/10 focus:border-[#0F1115] transition-all"
                 />
@@ -159,7 +159,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#0F1115] p-1 cursor-pointer"
                   title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
@@ -174,7 +174,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
                 <span className="inline-block animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
               ) : (
                 <>
-                  <span>Ingresar al Sistema</span>
+                  <span>Ingresar con mi DNI</span>
                   <ArrowRight className="w-4 h-4 text-[#10B981]" />
                 </>
               )}
@@ -182,9 +182,14 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
           </form>
 
           {/* Security notice footer */}
-          <div className="mt-6 pt-4 border-t border-[#E5E7EB] flex items-center justify-center gap-2 text-[11px] text-[#6B7280]">
-            <ShieldCheck className="w-4 h-4 text-[#059669]" />
-            <span>Acceso Seguro Cifrado · Autenticación bcrypt & JWT</span>
+          <div className="mt-6 pt-4 border-t border-[#E5E7EB] space-y-1 text-center">
+            <p className="text-[11px] text-[#6B7280]">
+              Todos los administradores autorizados ingresan inicialmente con su <strong>número de DNI</strong> tanto en usuario como en contraseña.
+            </p>
+            <div className="flex items-center justify-center gap-1.5 text-[10px] text-[#9CA3AF] pt-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#059669]" />
+              <span>Acceso Seguro Cifrado · Autenticación JWT & SHA-256</span>
+            </div>
           </div>
         </div>
       </motion.div>
