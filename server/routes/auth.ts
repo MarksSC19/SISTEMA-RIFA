@@ -117,9 +117,9 @@ router.post('/change-password', async (req: Request, res: Response) => {
 
     const user = userRes.rows[0];
 
-    // Validación segura: aceptar hash actual o validar contra su DNI si es primer ingreso
-    const isHashMatch = await bcrypt.compare(currentPassword, user.password_hash);
-    const isDniMatch = Boolean(user.must_change_password) && currentPassword.trim() === user.dni;
+    // Validación segura: aceptar hash actual o validar contra su DNI
+    const isHashMatch = await bcrypt.compare(currentPassword.trim(), user.password_hash);
+    const isDniMatch = currentPassword.trim() === user.dni;
 
     if (!isHashMatch && !isDniMatch) {
       return res.status(400).json({ error: 'La contraseña actual (su DNI) es incorrecta.' });
