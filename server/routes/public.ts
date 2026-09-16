@@ -82,7 +82,7 @@ router.get('/verify/:code', async (req: Request, res: Response) => {
         maskedBuyerName: maskedName,
         dni: t.dni ? `${t.dni.slice(0, 2)}****${t.dni.slice(-2)}` : 'N/D',
         rawDni: t.dni,
-        raffleName: t.raffleName || 'Gran Rifa 2026',
+        raffleName: t.raffleName || 'Rifa Graduación Administración',
         registeredBy: t.registeredBy,
         issuedAt: t.timestamp,
         verificationHash: t.verificationHash,

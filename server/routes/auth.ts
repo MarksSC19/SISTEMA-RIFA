@@ -90,20 +90,59 @@ router.post('/change-password', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
     }
 
-    const userRes = await db.query('SELECT password_hash FROM users WHERE id = $1', [decoded.id]);
+    const userRes = await db.query(
+      'SELECT id, email, full_name, dni, phone, role, password_hash, must_change_password FROM users WHERE id = $1',
+      [decoded.id]
+    );
     if (userRes.rows.length === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
-    if (!isMatch) {
+    const user = userRes.rows[0];
+
+    // Validación segura: aceptar hash actual o validar contra su DNI si es primer ingreso
+    const isHashMatch = await bcrypt.compare(currentPassword, user.password_hash);
+    const isDniMatch = Boolean(user.must_change_password) && currentPassword.trim() === user.dni;
+
+    if (!isHashMatch && !isDniMatch) {
       return res.status(400).json({ error: 'La contraseña actual (su DNI) es incorrecta.' });
     }
 
     const newHash = await bcrypt.hash(newPassword.trim(), 10);
-    await db.query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2', [newHash, decoded.id]);
+    await db.query(
+      'UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2',
+      [newHash, decoded.id]
+    );
 
-    res.json({ success: true, message: 'Contraseña actualizada exitosamente.' });
+    // Generar nuevo token JWT con estado actualizado
+    const newToken = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.full_name,
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada exitosamente.',
+      token: newToken,
+      user: {
+        id: user.id,
+        name: user.full_name,
+        email: user.email,
+        dni: user.dni,
+        phone: user.phone,
+        role: user.role,
+        assignedQuota: 20,
+        avatarInitials: getInitials(user.full_name),
+        assignedRaffleId: 'rf-024',
+        mustChangePassword: false,
+      },
+    });
   } catch (error: any) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Error al cambiar la contraseña.' });

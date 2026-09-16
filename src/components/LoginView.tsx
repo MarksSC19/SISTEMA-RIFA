@@ -83,14 +83,14 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
       >
         {/* Logo & Brand Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#0F1115] text-white shadow-lg mb-3">
-            <Ticket className="w-7 h-7 text-[#10B981]" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white border border-[#E5E7EB] shadow-md mb-3 p-1.5">
+            <img src="/logo.png" alt="Logo Oficial" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#0F1115] uppercase">
-            RIFAS <span className="text-[#059669]">PRO</span>
+          <h1 className="text-2xl font-bold tracking-tight text-[#0F1115]">
+            Rifa Graduación Administración
           </h1>
-          <p className="text-xs text-[#6B7280] mt-1">
-            Plataforma Oficial de Rifas Junín · Acceso por DNI
+          <p className="text-xs text-[#6B7280] mt-1 font-medium">
+            Plataforma Oficial Junín · Acceso por DNI
           </p>
         </div>
 

@@ -35,7 +35,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
     `;
     const params: any[] = [];
 
-    if (sellerId) {
+    // Si el usuario es un administrador operador (no super_admin), aislar obligatoriamente sus ventas
+    if (req.user?.role !== 'super_admin') {
+      params.push(req.user?.id);
+      query += ` AND t.seller_admin_id = $${params.length}`;
+    } else if (sellerId) {
       params.push(sellerId);
       query += ` AND t.seller_admin_id = $${params.length}`;
     }

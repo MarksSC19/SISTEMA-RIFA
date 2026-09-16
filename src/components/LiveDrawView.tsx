@@ -515,7 +515,7 @@ export const LiveDrawView: React.FC<Props> = ({
                         const winnerName = winnerTicket?.buyerName || 'Estimado(a)';
                         const ticketNum = winnerTicket?.formattedNumber || '';
                         const prizeName = activePrize ? getCleanPrizeName(activePrize.name) : 'Premio Oficial';
-                        const msg = `🎉 *¡FELICITACIONES! GANADOR DE LA GRAN RIFA 2026*\n\nHola *${winnerName}*, te informamos con gran alegría que tu boleto *${ticketNum}* acaba de salir GANADOR del premio:\n🏆 *${prizeName}*\n\nAdmin Encargado: ${winnerTicket?.registeredBy || 'Operador Oficial'}.\n\nPor favor comunícate con nosotros para coordinar la entrega formal. ¡Muchas felicidades!`;
+                        const msg = `🎉 *¡FELICITACIONES! GANADOR DE LA RIFA GRADUACIÓN ADMINISTRACIÓN*\n\nHola *${winnerName}*, te informamos con gran alegría que tu boleto *${ticketNum}* acaba de salir GANADOR del premio:\n🏆 *${prizeName}*\n\nAdmin Encargado: ${winnerTicket?.registeredBy || 'Operador Oficial'}.\n\nPor favor comunícate con nosotros para coordinar la entrega formal. ¡Muchas felicidades!`;
                         const cleanPhone = (winnerTicket?.phone || '').replace(/\D/g, '');
                         const waUrl = cleanPhone.length >= 8 
                           ? `https://api.whatsapp.com/send?phone=${cleanPhone.startsWith('51') ? cleanPhone : '51' + cleanPhone}&text=${encodeURIComponent(msg)}`

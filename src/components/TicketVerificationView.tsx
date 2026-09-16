@@ -15,7 +15,9 @@ import {
   Layers,
   Clock,
   User,
-  Phone
+  Phone,
+  Trophy,
+  ExternalLink
 } from 'lucide-react';
 import { Ticket, Raffle } from '../types';
 import { generateQrDataUrl, getTicketVerificationUrl } from '../utils/qrHelper';
@@ -38,6 +40,74 @@ interface BuyerTicketSummary {
   ticketCode: string;
   issuedAt?: string;
 }
+
+interface OfficialPrize {
+  order: number;
+  name: string;
+  category: string;
+  description: string;
+  imageUrl: string;
+  link?: string;
+}
+
+const OFFICIAL_PRIZES: OfficialPrize[] = [
+  {
+    order: 1,
+    name: 'Microondas LG NeoChef 25L',
+    category: 'Electrohogar',
+    description: 'Horno microondas LG NeoChef Smart Inverter 25L con tecnología EasyClean antibacterial y acabado espejado.',
+    imageUrl: 'https://images.unsplash.com/photo-1585659722983-3a675dabf23d?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.falabella.com.pe/falabella-pe/product/15768826/horno-microondas-ms2536gis-25l-con-easyclean-lg/15768826',
+  },
+  {
+    order: 2,
+    name: '1 Tattoo Grande (Black Monkey Tattoo)',
+    category: 'Arte & Tatuaje',
+    description: 'Sesión completa de tatuaje personalizado de gran formato realizado por el prestigioso estudio Black Monkey Tattoo.',
+    imageUrl: 'https://images.unsplash.com/photo-1598371839696-5c5bb00bdc28?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.instagram.com/black_monkeytattoo?stkn=ZDNlZDc0MzlxNW==',
+  },
+  {
+    order: 3,
+    name: 'Juego de Tarima de Madera',
+    category: 'Hogar & Muebles',
+    description: 'Juego de tarima de madera selecta reforzada con espaldar español tallado para dormitorio.',
+    imageUrl: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.google.com/search?q=TARIMA+ESPA%C3%91OLA+CAMA',
+  },
+  {
+    order: 4,
+    name: 'Cena Gourmet en Pareja Fontana Lounge',
+    category: 'Gastronomía',
+    description: 'Cena gourmet exclusiva para 2 personas en Fontana Lounge con cócteles y postres de cortesía.',
+    imageUrl: 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.facebook.com/fontanalounge/?locale=es_LA',
+  },
+  {
+    order: 5,
+    name: 'Gift Card Aruma Cosmética & Belleza',
+    category: 'Belleza & Cuidado',
+    description: 'Tarjeta de regalo Aruma oficial para canjear en cosmética, maquillaje y cuidado personal de alta gama.',
+    imageUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.instagram.com/aruma.pe?stkn=ZDNlZDc0MzlxNw==',
+  },
+  {
+    order: 6,
+    name: '3 Tattoos Pequeños (Black Monkey Tattoo)',
+    category: 'Arte & Tatuaje',
+    description: 'Pack de 3 tatuajes minimalistas o de línea fina en Black Monkey Tattoo.',
+    imageUrl: 'https://images.unsplash.com/photo-1611501275019-9b5cda994e8d?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.instagram.com/black_monkeytattoo?stkn=ZDNlZDc0MzlxNW==',
+  },
+  {
+    order: 7,
+    name: '3 Cajas de Postres Artesanales CAELA',
+    category: 'Repostería Fina',
+    description: 'Trilogía dulce gourmet artesanal con los postres más aclamados de CAELA Repostería.',
+    imageUrl: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
+    link: 'https://www.instagram.com/caela.reposteria?stkn=ZDNlZDc0MzlxNw==',
+  },
+];
 
 const DEFAULT_FALLBACK_TICKET: Ticket = {
   id: 't-loading',
@@ -284,7 +354,7 @@ export const TicketVerificationView: React.FC<Props> = ({
         .join('\n');
 
       shareText = `🎟️ *CERTIFICADO DE PARTICIPACIÓN OFICIAL*\n\n` +
-        `📌 *Rifa:* ${raffle?.title || 'Gran Rifa 2026'}\n` +
+        `📌 *Rifa:* ${raffle?.title || 'Rifa Graduación Administración'}\n` +
         `👤 *Titular:* ${currentTicket.buyerName}\n` +
         `🪪 *DNI:* ${currentTicket.dni}\n` +
         `🕒 *Emisión (Hora Perú):* ${dateFormatted}\n` +
@@ -294,7 +364,7 @@ export const TicketVerificationView: React.FC<Props> = ({
         `Estado: ● Participación Válida y Auténtica.`;
     } else {
       shareText = `🎟️ *CERTIFICADO DE PARTICIPACIÓN OFICIAL*\n\n` +
-        `📌 *Rifa:* ${raffle?.title || 'Gran Rifa 2026'}\n` +
+        `📌 *Rifa:* ${raffle?.title || 'Rifa Graduación Administración'}\n` +
         `🔢 *Boleto N°:* ${currentTicket.formattedNumber}\n` +
         `👤 *Titular:* ${currentTicket.buyerName}\n` +
         `🪪 *DNI:* ${currentTicket.dni}\n` +
@@ -324,8 +394,8 @@ export const TicketVerificationView: React.FC<Props> = ({
 
   return (
     <div id="verification-screen-container" className="min-h-screen bg-[#F5F5F3] text-[#0F1115] py-6 sm:py-8 px-4 flex flex-col items-center justify-between font-['Geist',sans-serif]">
-      {/* Top minimal bar */}
-      <div className="w-full max-w-md flex items-center justify-between mb-4">
+      {/* Top Bar con Logo Oficial y Titularidad */}
+      <div className="w-full max-w-xl flex items-center justify-between mb-4">
         <button
           id="verification-back-btn"
           onClick={onBack}
@@ -336,8 +406,15 @@ export const TicketVerificationView: React.FC<Props> = ({
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-[10px] sm:text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase">
-            CERTIFICADOR OFICIAL
+          <img src="/logo.png" alt="Logo Oficial" className="w-7 h-7 object-contain" />
+          <span className="text-xs font-bold text-slate-900 tracking-tight hidden sm:inline">
+            Rifa Graduación Administración
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase">
+            CERTIFICADO OFICIAL
           </span>
 
           {onGoToLogin && isPublicView && (
@@ -387,7 +464,7 @@ export const TicketVerificationView: React.FC<Props> = ({
               {currentTicket.buyerName}
             </div>
             <div className="text-xs text-slate-500 font-medium">
-              {raffle?.title || 'Gran Rifa 2026'} · Junín, Perú
+              {raffle?.title || 'Rifa Graduación Administración'} · Junín, Perú
             </div>
           </div>
 
@@ -517,8 +594,84 @@ export const TicketVerificationView: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Vitrina de los 7 Grandes Premios Oficiales */}
+      <div className="w-full max-w-xl mt-8 space-y-4">
+        <div className="text-center space-y-1 px-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold uppercase tracking-wider shadow-2xs">
+            <Trophy className="w-3.5 h-3.5 text-amber-600" />
+            <span>Los 7 Grandes Premios Oficiales</span>
+          </div>
+          <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+            Premios Oficiales en Disputa
+          </h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Cada boleto emitido participa directamente por los siguientes 7 premios certificados ante notario.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+          {OFFICIAL_PRIZES.map((prize) => (
+            <div
+              key={prize.order}
+              className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
+            >
+              <div className="relative h-44 w-full overflow-hidden bg-slate-100">
+                <img
+                  src={prize.imageUrl}
+                  alt={prize.name}
+                  loading="lazy"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
+                <div className="absolute top-2.5 left-2.5">
+                  <span className="px-2.5 py-1 rounded-lg bg-[#0F1115]/90 text-white font-mono text-[11px] font-bold backdrop-blur-xs shadow-xs">
+                    {prize.order}° Premio
+                  </span>
+                </div>
+                <div className="absolute top-2.5 right-2.5">
+                  <span className="px-2 py-0.5 rounded-full bg-white/95 text-slate-700 text-[10px] font-bold shadow-xs border border-slate-100">
+                    {prize.category}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 flex-1 flex flex-col justify-between space-y-2.5">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                    {prize.name}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    {prize.description}
+                  </p>
+                </div>
+
+                {prize.link && (
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <a
+                      href={prize.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <span>Ver referencia oficial</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Oficial
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Buscador manual por DNI o código */}
-      <div className="w-full max-w-md mt-5">
+      <div className="w-full max-w-xl mt-6">
         <form onSubmit={handleSearch} className="relative">
           <input
             type="text"
@@ -542,8 +695,9 @@ export const TicketVerificationView: React.FC<Props> = ({
         )}
       </div>
 
-      <div className="mt-6 text-xs font-mono text-slate-400 text-center">
-        RIFAS ENGINE VERIFIER · PLATAFORMA OFICIAL JUNÍN
+      <div className="mt-8 mb-2 text-xs font-mono text-slate-400 text-center flex items-center justify-center gap-2">
+        <img src="/logo.png" alt="Logo" className="w-4 h-4 object-contain" />
+        <span>RIFA GRADUACIÓN ADMINISTRACIÓN · JUNÍN, PERÚ</span>
       </div>
     </div>
   );

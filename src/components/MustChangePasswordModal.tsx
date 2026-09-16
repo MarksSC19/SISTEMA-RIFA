@@ -51,11 +51,19 @@ export const MustChangePasswordModal: React.FC<Props> = ({
     setIsSubmitting(true);
 
     try {
-      await api.changePassword(currentPassword.trim(), newPassword.trim());
-      const updated: AuthUser = {
+      const response = await api.changePassword(currentPassword.trim(), newPassword.trim());
+      if (response && response.token) {
+        localStorage.setItem('rifas_jwt_token', response.token);
+      }
+      const updated: AuthUser = (response && response.user) ? response.user : {
         ...currentUser,
         mustChangePassword: false,
       };
+      try {
+        localStorage.setItem('rifas_auth_user', JSON.stringify(updated));
+      } catch {
+        // safe fallback
+      }
       onPasswordChanged(updated);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error al cambiar contraseña. Verifique que su contraseña actual coincida.');

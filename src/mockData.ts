@@ -78,7 +78,7 @@ export const INITIAL_RAFFLES: Raffle[] = [
   {
     id: 'rf-024',
     code: '#024',
-    title: 'Gran Rifa 2026',
+    title: 'Rifa Graduación Administración',
     description: 'Sorteo oficial con 7 grandes premios. Cada administrador cuenta con una cuota asignada de 20 tickets.',
     status: 'activa',
     ticketPrice: 10,

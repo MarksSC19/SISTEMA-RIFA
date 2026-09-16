@@ -57,16 +57,22 @@ export const AdminPanelView: React.FC<Props> = ({
   const [isTicketEditModalOpen, setIsTicketEditModalOpen] = useState(false);
   const [ticketToEdit, setTicketToEdit] = useState<Ticket | null>(null);
 
-  const soldCount = tickets.length;
-  const freeCount = Math.max(0, raffle.totalTickets - soldCount);
+  // Si el usuario es un admin operador (no superadmin), sus tickets mostrados y contados son EXCLUSIVAMENTE los suyos
+  const myTickets = currentUser?.role === 'super_admin'
+    ? tickets
+    : tickets.filter(t => (t.sellerAdminId && t.sellerAdminId === currentUser?.id) || t.registeredBy === currentUser?.name);
+
+  const soldCount = myTickets.length;
+  const adminTargetQuota = currentUser?.assignedQuota || 20;
+  const freeCount = Math.max(0, adminTargetQuota - soldCount);
   const totalRevenue = soldCount * raffle.ticketPrice;
-  const progressPercent = Math.min(100, Math.round((soldCount / raffle.totalTickets) * 100));
+  const progressPercent = Math.min(100, Math.round((soldCount / adminTargetQuota) * 100));
 
   const rafflePrizes = prizes
     .filter(p => p.raffleId === raffle.id)
     .sort((a, b) => a.order - b.order);
 
-  const filteredTickets = tickets.filter(t => 
+  const filteredTickets = myTickets.filter(t => 
     t.buyerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.formattedNumber.includes(searchTerm) ||
     t.dni.includes(searchTerm) ||
@@ -84,9 +90,7 @@ export const AdminPanelView: React.FC<Props> = ({
     }
   };
 
-  const adminTargetQuota = currentUser?.assignedQuota || 20;
-  const ticketsSoldByThisAdmin = tickets.filter(t => t.registeredBy === currentUser?.name).length || 
-    (currentUser?.name === 'Valeria Quispe' ? 12 : currentUser?.name === 'Carlos Méndez' ? 8 : tickets.length);
+  const ticketsSoldByThisAdmin = myTickets.length;
   const quotaProgress = Math.min(100, Math.round((ticketsSoldByThisAdmin / adminTargetQuota) * 100));
   const remainingTickets = Math.max(0, adminTargetQuota - ticketsSoldByThisAdmin);
 
@@ -104,25 +108,31 @@ export const AdminPanelView: React.FC<Props> = ({
             <span>Panel Superadmin</span>
           </button>
         ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#0F1115] text-white text-xs font-bold flex items-center justify-center font-mono">
-              {currentUser?.avatarInitials || 'A'}
-            </div>
+          <div className="flex items-center gap-2.5">
+            <img 
+              src="/logo.png" 
+              alt="Logo Oficial" 
+              className="w-8 h-8 rounded-lg object-contain border border-gray-200 bg-white p-0.5 shadow-xs" 
+            />
             <div>
               <span className="text-xs font-bold text-[#0F1115] block">
                 {currentUser?.name || 'Operador Admin'}
               </span>
-              <span className="text-[10px] text-[#6B7280]">
+              <span className="text-[10px] text-[#059669] font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] inline-block" />
                 Punto de Venta Autorizado
               </span>
             </div>
           </div>
         )}
 
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] font-mono text-[#6B7280] tracking-wide hidden sm:inline">
-            SISTEMA RIFA
-          </span>
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 bg-[#F9FAFB] px-2.5 py-1 rounded-lg border border-gray-200">
+            <img src="/logo.png" alt="Logo" className="w-4 h-4 object-contain" />
+            <span className="text-[11px] font-semibold text-[#1F2937] tracking-tight">
+              Rifa Graduación Administración
+            </span>
+          </div>
 
           {onLogout && (
             <button
@@ -199,38 +209,45 @@ export const AdminPanelView: React.FC<Props> = ({
             </p>
           </div>
 
-          <div className="relative">
-            <button
-              onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] hover:bg-[#D1FAE5] transition-colors cursor-pointer"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#059669]" />
-              <span className="uppercase tracking-wider">{raffle.status}</span>
-              <ChevronDown className="w-3 h-3 text-[#059669]" />
-            </button>
+          {currentUser?.role === 'super_admin' ? (
+            <div className="relative">
+              <button
+                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] hover:bg-[#D1FAE5] transition-colors cursor-pointer"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#059669]" />
+                <span className="uppercase tracking-wider">{raffle.status}</span>
+                <ChevronDown className="w-3 h-3 text-[#059669]" />
+              </button>
 
-            {showStatusDropdown && onToggleRaffleStatus && (
-              <div className="absolute right-0 mt-2 w-40 bg-white border border-[#E5E7EB] rounded-xl shadow-lg py-1 z-20">
-                <button
-                  onClick={() => {
-                    onToggleRaffleStatus(raffle.id);
-                    setShowStatusDropdown(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-[#374151] hover:bg-[#F5F5F3] flex items-center justify-between cursor-pointer"
-                >
-                  <span>{raffle.status === 'activa' ? 'Cerrar Rifa' : 'Reactivar Rifa'}</span>
-                  <Lock className="w-3.5 h-3.5 text-[#6B7280]" />
-                </button>
-              </div>
-            )}
-          </div>
+              {showStatusDropdown && onToggleRaffleStatus && (
+                <div className="absolute right-0 mt-2 w-40 bg-white border border-[#E5E7EB] rounded-xl shadow-lg py-1 z-20">
+                  <button
+                    onClick={() => {
+                      onToggleRaffleStatus(raffle.id);
+                      setShowStatusDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-[#374151] hover:bg-[#F5F5F3] flex items-center justify-between cursor-pointer"
+                  >
+                    <span>{raffle.status === 'activa' ? 'Cerrar Rifa' : 'Reactivar Rifa'}</span>
+                    <Lock className="w-3.5 h-3.5 text-[#6B7280]" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#059669]" />
+              <span className="uppercase tracking-wider">Activa</span>
+            </span>
+          )}
         </div>
 
         {/* Progress bar */}
         <div className="space-y-2 mb-6">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-[#0F1115] font-['JetBrains_Mono']">
-              {soldCount.toLocaleString()} / {raffle.totalTickets.toLocaleString()} tickets
+              {soldCount.toLocaleString()} / {adminTargetQuota.toLocaleString()} tickets asignados
             </span>
             <span className="text-[#6B7280] font-mono text-[11px]">
               {progressPercent}% completado
@@ -254,7 +271,7 @@ export const AdminPanelView: React.FC<Props> = ({
               {soldCount.toLocaleString()}
             </div>
             <div className="text-[11px] font-medium text-[#6B7280] uppercase tracking-wider mt-0.5">
-              Vendidos
+              {currentUser?.role === 'super_admin' ? 'Total Vendidos' : 'Mis Ventas'}
             </div>
           </div>
 
@@ -263,7 +280,7 @@ export const AdminPanelView: React.FC<Props> = ({
               {freeCount.toLocaleString()}
             </div>
             <div className="text-[11px] font-medium text-[#6B7280] uppercase tracking-wider mt-0.5">
-              Libres
+              {currentUser?.role === 'super_admin' ? 'Total Libres' : 'Mis Libres'}
             </div>
           </div>
 
@@ -272,7 +289,7 @@ export const AdminPanelView: React.FC<Props> = ({
               {raffle.currency}{totalRevenue.toLocaleString()}
             </div>
             <div className="text-[11px] font-medium text-[#6B7280] uppercase tracking-wider mt-0.5">
-              Recaudado
+              {currentUser?.role === 'super_admin' ? 'Recaudación' : 'Mi Recaudado'}
             </div>
           </div>
         </div>
@@ -283,7 +300,7 @@ export const AdminPanelView: React.FC<Props> = ({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#0F1115] uppercase tracking-wider">
                 <Trophy className="w-3.5 h-3.5 text-[#059669]" />
-                <span>Premios en Disputa ({rafflePrizes.length}) · Fijados por Superadmin</span>
+                <span>Premios en Disputa ({rafflePrizes.length}) · Oficial</span>
               </div>
               <button
                 onClick={() => setShowPrizesList(!showPrizesList)}
@@ -338,15 +355,17 @@ export const AdminPanelView: React.FC<Props> = ({
             <span>Registrar ticket</span>
           </button>
 
-          <button
-            id="go-to-live-draw-btn"
-            onClick={() => onGoToLiveDraw(raffle.id)}
-            className="py-3.5 px-5 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-            title="Abrir pantalla teatral de sorteo en vivo"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#059669]" />
-            <span>Sorteo en vivo</span>
-          </button>
+          {currentUser?.role === 'super_admin' && onGoToLiveDraw && (
+            <button
+              id="go-to-live-draw-btn"
+              onClick={() => onGoToLiveDraw(raffle.id)}
+              className="py-3.5 px-5 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              title="Abrir pantalla teatral de sorteo en vivo"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#059669]" />
+              <span>Sorteo en vivo</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -355,10 +374,10 @@ export const AdminPanelView: React.FC<Props> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h2 className="text-sm font-semibold tracking-tight text-[#0F1115] uppercase">
-              Últimos registros
+              Mis Ventas Registradas
             </h2>
             <p className="text-[11px] text-[#6B7280]">
-              {filteredTickets.length} de {tickets.length} tickets registrados (Gestión y corrección activa)
+              {filteredTickets.length} {filteredTickets.length === 1 ? 'ticket emitido' : 'tickets emitidos'} bajo su punto de venta
             </p>
           </div>
 

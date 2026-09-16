@@ -80,19 +80,21 @@ export const PerspectiveSwitcher: React.FC<Props> = ({
         <span className="sm:hidden">+ Ticket</span>
       </button>
 
-      <button
-        id="switch-view-draw"
-        onClick={() => onSelectView('live_draw')}
-        className={`px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-          currentView === 'live_draw'
-            ? 'bg-[#059669] text-white shadow-xs'
-            : 'text-[#9CA3AF] hover:text-white'
-        }`}
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">4. Sorteo en Vivo</span>
-        <span className="sm:hidden">Sorteo</span>
-      </button>
+      {isSuperAdmin && (
+        <button
+          id="switch-view-draw"
+          onClick={() => onSelectView('live_draw')}
+          className={`px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+            currentView === 'live_draw'
+              ? 'bg-[#059669] text-white shadow-xs'
+              : 'text-[#9CA3AF] hover:text-white'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">4. Sorteo en Vivo</span>
+          <span className="sm:hidden">Sorteo</span>
+        </button>
+      )}
 
       <button
         id="switch-view-verify"

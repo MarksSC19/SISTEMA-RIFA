@@ -242,13 +242,16 @@ export const SuperAdminView: React.FC<Props> = ({
           ───────────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-30 bg-white border-b border-[#E5E7EB] px-4 md:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-bold tracking-tight text-[#0F1115] font-['Geist'] uppercase">
-              RIFAS
-            </span>
-            <span className="hidden sm:inline-block text-[10px] uppercase font-mono tracking-widest px-1.5 py-0.5 rounded bg-[#0F1115] text-white">
-              Superadmin
-            </span>
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="Logo Oficial" className="w-8 h-8 rounded-lg object-contain border border-gray-200 bg-white p-0.5 shadow-xs" />
+            <div>
+              <span className="text-sm font-bold tracking-tight text-[#0F1115] block leading-tight">
+                Rifa Graduación Administración
+              </span>
+              <span className="text-[10px] uppercase font-mono tracking-wider text-[#059669] font-bold">
+                Panel Oficial Superadmin
+              </span>
+            </div>
           </div>
         </div>
 
@@ -314,10 +317,10 @@ export const SuperAdminView: React.FC<Props> = ({
               className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-[8px] hover:bg-[#F5F5F3] transition-colors cursor-pointer"
             >
               <div className="w-7 h-7 rounded-full bg-[#0F1115] text-white text-xs font-semibold flex items-center justify-center font-mono">
-                {currentUser?.avatarInitials || 'M'}
+                {currentUser?.avatarInitials || 'JJ'}
               </div>
               <span className="text-xs font-semibold text-[#0F1115]">
-                {currentUser?.name || 'Marks'}
+                {currentUser?.name || 'Jheyson Ryam Jorge Vasquez'}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-[#6B7280]" />
             </button>
@@ -325,8 +328,8 @@ export const SuperAdminView: React.FC<Props> = ({
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-56 bg-white border border-[#E5E7EB] rounded-[10px] shadow-lg py-1.5 z-40 text-xs">
                 <div className="px-3 py-2 border-b border-[#E5E7EB]">
-                  <p className="font-semibold text-[#0F1115]">{currentUser?.name || 'Marks'}</p>
-                  <p className="text-[11px] text-[#6B7280] truncate">{currentUser?.email || 'marksdelmissolano@gmail.com'}</p>
+                  <p className="font-semibold text-[#0F1115]">{currentUser?.name || 'Jheyson Ryam Jorge Vasquez'}</p>
+                  <p className="text-[11px] text-[#6B7280] truncate">{currentUser?.email || 'jheyson.jorge@rifas.pe'}</p>
                 </div>
                 <div className="py-1">
                   <div className="px-3 py-1 text-[#4B5563]">Rol: Super Administrador</div>
@@ -435,7 +438,7 @@ export const SuperAdminView: React.FC<Props> = ({
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[10px] font-mono font-bold tracking-widest text-[#059669] bg-[#ECFDF5] px-2.5 py-0.5 rounded-full border border-[#A7F3D0] uppercase">
-                        CAMPAÑA OFICIAL: {currentRaffle?.title || 'Gran Rifa 2026'} ({currentRaffle?.code || '#024'}) · 31 ADMINISTRADORES
+                        CAMPAÑA OFICIAL: {currentRaffle?.title || 'Rifa Graduación Administración'} ({currentRaffle?.code || '#024'}) · 31 ADMINISTRADORES
                       </span>
                     </div>
                     <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[#0F1115]">
@@ -817,7 +820,7 @@ export const SuperAdminView: React.FC<Props> = ({
                       </div>
                       <div>
                         <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F1115]">
-                          Estado de los 7 Premios Oficiales (Gran Rifa 2026)
+                          Estado de los 7 Premios Oficiales (Rifa Graduación Administración)
                         </h2>
                         <span className="text-[11px] text-[#6B7280]">
                           Adjudicación oficial y certificación mediante algoritmo CSPRNG
@@ -912,7 +915,7 @@ export const SuperAdminView: React.FC<Props> = ({
                 <div>
                   <h2 className="text-base font-bold text-[#0F1115] uppercase tracking-wide flex items-center gap-2">
                     <Trophy className="w-4 h-4 text-[#059669]" />
-                    <span>Catálogo de los 7 Premios Oficiales (Gran Rifa 2026)</span>
+                    <span>Catálogo de los 7 Premios Oficiales (Rifa Graduación Administración)</span>
                   </h2>
                   <p className="text-xs text-[#6B7280]">
                     Premios configurados para la campaña oficial. Al momento del sorteo en vivo, se certificarán con algoritmo CSPRNG.

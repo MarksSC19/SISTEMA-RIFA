@@ -84,7 +84,7 @@ async function seed() {
   }
   console.log('✓ System config seeded');
 
-  // 2. Raffle rf-024 (Gran Rifa 2026)
+  // 2. Raffle rf-024 (Rifa Graduación Administración)
   const raffle = INITIAL_RAFFLES[0];
   await client.query(
     `INSERT INTO raffles (id, code, name, description, ticket_price, total_tickets, status)
