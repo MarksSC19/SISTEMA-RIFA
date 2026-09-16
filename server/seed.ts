@@ -40,13 +40,22 @@ const RAW_ADMIN_DATA = [
 ];
 
 async function seed() {
-  const client = new Client({
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5433', 10),
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || '123456789',
-    database: process.env.DB_NAME || 'rifas_db',
-  });
+  const client = new Client(
+    process.env.DATABASE_URL
+      ? {
+          connectionString: process.env.DATABASE_URL,
+          ssl: process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1')
+            ? false
+            : { rejectUnauthorized: false },
+        }
+      : {
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '5433', 10),
+          user: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASSWORD || '123456789',
+          database: process.env.DB_NAME || 'rifas_db',
+        }
+  );
 
   await client.connect();
   console.log('Connected to rifas_db for seeding...');
