@@ -8,12 +8,14 @@ interface Props {
   isOpen: boolean;
   currentUser: AuthUser;
   onPasswordChanged: (updatedUser: AuthUser) => void;
+  onLogout?: () => void;
 }
 
 export const MustChangePasswordModal: React.FC<Props> = ({
   isOpen,
   currentUser,
   onPasswordChanged,
+  onLogout,
 }) => {
   const [currentPassword, setCurrentPassword] = useState(currentUser.dni || '');
   const [newPassword, setNewPassword] = useState('');
@@ -51,7 +53,7 @@ export const MustChangePasswordModal: React.FC<Props> = ({
     setIsSubmitting(true);
 
     try {
-      const response = await api.changePassword(currentPassword.trim(), newPassword.trim());
+      const response = await api.changePassword(currentPassword.trim(), newPassword.trim(), currentUser.dni);
       if (response && response.token) {
         localStorage.setItem('rifas_jwt_token', response.token);
       }
@@ -190,6 +192,22 @@ export const MustChangePasswordModal: React.FC<Props> = ({
                   </>
                 )}
               </button>
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem('rifas_auth_user');
+                      localStorage.removeItem('rifas_jwt_token');
+                    } catch {}
+                    onLogout();
+                  }}
+                  className="w-full mt-2 py-2 text-center text-xs font-semibold text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+                >
+                  Cancelar y Volver al Login
+                </button>
+              )}
             </div>
           </form>
         </motion.div>

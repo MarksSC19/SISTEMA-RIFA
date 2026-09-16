@@ -78,24 +78,41 @@ router.post('/login', async (req: Request, res: Response) => {
 // POST /api/auth/change-password - Cambio obligatorio de contraseña
 router.post('/change-password', async (req: Request, res: Response) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado.' });
-    }
-    const token = authHeader.split(' ')[1];
-    const decoded: any = jwt.verify(token, JWT_SECRET);
+    const { currentPassword, newPassword, dni } = req.body;
 
-    const { currentPassword, newPassword } = req.body;
     if (!newPassword || newPassword.trim().length < 6) {
       return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
     }
 
-    const userRes = await db.query(
-      'SELECT id, email, full_name, dni, phone, role, password_hash, must_change_password FROM users WHERE id = $1',
-      [decoded.id]
-    );
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    let userId: string | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        userId = decoded.id;
+      } catch {
+        // Token inválido o expirado, recurrir a búsqueda por DNI
+      }
+    }
+
+    let userRes;
+    if (userId) {
+      userRes = await db.query(
+        'SELECT id, email, full_name, dni, phone, role, password_hash, must_change_password FROM users WHERE id = $1',
+        [userId]
+      );
+    } else if (dni) {
+      userRes = await db.query(
+        'SELECT id, email, full_name, dni, phone, role, password_hash, must_change_password FROM users WHERE dni = $1',
+        [dni.trim()]
+      );
+    } else {
+      return res.status(400).json({ error: 'Debe proporcionar su DNI o iniciar sesión.' });
+    }
+
+    if (!userRes || userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado en la base de datos.' });
     }
 
     const user = userRes.rows[0];
@@ -111,7 +128,7 @@ router.post('/change-password', async (req: Request, res: Response) => {
     const newHash = await bcrypt.hash(newPassword.trim(), 10);
     await db.query(
       'UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2',
-      [newHash, decoded.id]
+      [newHash, user.id]
     );
 
     // Generar nuevo token JWT con estado actualizado

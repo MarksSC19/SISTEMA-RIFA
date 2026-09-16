@@ -38,8 +38,27 @@ export default function App() {
   // Authentication state persisted in localStorage
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
     if (!isUpToDate) return null;
+    // Si la URL es de verificación pública (?verify=... o ?code=...), no restaurar ningún operador para que el participante vea limpio su ticket
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('verify') || p.get('code') || p.get('ticket')) {
+        return null;
+      }
+    }
     const saved = localStorage.getItem('rifas_auth_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      // Si el usuario tenía cambio de contraseña pendiente, no dejarlo atrapado: volver a login limpio
+      if (parsed && parsed.mustChangePassword) {
+        localStorage.removeItem('rifas_auth_user');
+        localStorage.removeItem('rifas_jwt_token');
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
   });
 
   // Raffles state
@@ -715,7 +734,7 @@ export default function App() {
     }
   }, [currentView]);
 
-  const isPublicVerification = currentView === 'verification' && !currentUser;
+  const isPublicVerification = currentView === 'verification';
   if (!currentUser && !isPublicVerification) {
     return <LoginView onLoginSuccess={handleLogin} />;
   }
@@ -735,6 +754,8 @@ export default function App() {
           admins={admins}
           auditLogs={auditLogs}
           prizes={prizes}
+          tickets={tickets}
+          onVerifyTicket={handleViewVerification}
           currentUser={currentUser}
           config={config}
           onSelectRaffleForAdmin={handleSelectRaffleForAdmin}
@@ -830,12 +851,13 @@ export default function App() {
         }}
       />
 
-      {/* Mandatory password change modal on first login */}
-      {currentUser && currentUser.mustChangePassword && (
+      {/* Mandatory password change modal on first login - NUNCA mostrar en verificación pública */}
+      {currentUser && currentUser.mustChangePassword && currentView !== 'verification' && (
         <MustChangePasswordModal
           isOpen={Boolean(currentUser.mustChangePassword)}
           currentUser={currentUser}
           onPasswordChanged={handlePasswordChanged}
+          onLogout={handleLogout}
         />
       )}
 

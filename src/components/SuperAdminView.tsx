@@ -44,6 +44,8 @@ interface Props {
   admins: AdminUser[];
   auditLogs: AuditLog[];
   prizes: Prize[];
+  tickets?: Ticket[];
+  onVerifyTicket?: (ticket: Ticket) => void;
   currentUser?: AuthUser | null;
   config?: SystemConfig;
   onSelectRaffleForAdmin: (raffleId: string) => void;
@@ -69,6 +71,8 @@ export const SuperAdminView: React.FC<Props> = ({
   admins,
   auditLogs,
   prizes,
+  tickets = [],
+  onVerifyTicket,
   currentUser,
   config,
   onSelectRaffleForAdmin,
@@ -96,6 +100,8 @@ export const SuperAdminView: React.FC<Props> = ({
   const [overviewAdminSearch, setOverviewAdminSearch] = useState('');
   const [overviewAdminSort, setOverviewAdminSort] = useState<'highest' | 'lowest' | 'name'>('highest');
   const [overviewAdminFilter, setOverviewAdminFilter] = useState<'all' | 'completed' | 'pending'>('all');
+  const [ticketSearch, setTicketSearch] = useState('');
+  const [ticketSellerFilter, setTicketSellerFilter] = useState<string>('all');
   
   // Prize modal states
   const [isPrizeModalOpen, setIsPrizeModalOpen] = useState(false);
@@ -233,6 +239,17 @@ export const SuperAdminView: React.FC<Props> = ({
   const filteredPrizes = prizes.filter(p => {
     if (selectedRaffleForPrizes === 'all') return true;
     return p.raffleId === selectedRaffleForPrizes;
+  });
+
+  const filteredSalesTickets = (tickets || []).filter(t => {
+    const matchesSearch = 
+      t.buyerName.toLowerCase().includes(ticketSearch.toLowerCase()) ||
+      t.formattedNumber.toLowerCase().includes(ticketSearch.toLowerCase()) ||
+      t.dni.includes(ticketSearch) ||
+      (t.verificationCode && t.verificationCode.toLowerCase().includes(ticketSearch.toLowerCase())) ||
+      (t.registeredBy && t.registeredBy.toLowerCase().includes(ticketSearch.toLowerCase()));
+    const matchesSeller = ticketSellerFilter === 'all' || t.sellerAdminId === ticketSellerFilter || t.registeredBy === ticketSellerFilter;
+    return matchesSearch && matchesSeller;
   });
 
   return (
@@ -805,6 +822,142 @@ export const SuperAdminView: React.FC<Props> = ({
                               </tr>
                             );
                           })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* AUDITORÍA Y CONTROL DE ÚLTIMAS VENTAS POR ADMINISTRADOR */}
+                <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-xs overflow-hidden">
+                  <div className="p-5 border-b border-[#E5E7EB] space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm md:text-base font-bold text-[#0F1115] flex items-center gap-2">
+                          <TicketIcon className="w-4 h-4 text-[#059669]" />
+                          <span>Últimas Ventas y Boletos Emitidos</span>
+                        </h2>
+                        <p className="text-xs text-[#6B7280] mt-0.5">
+                          Control de ventas en tiempo real enlazado directamente con el administrador que emitió el boleto.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-[#059669] bg-[#ECFDF5] px-2.5 py-1 rounded-lg border border-[#A7F3D0]">
+                          {(tickets || []).length} Ventas Totales Registradas
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Buscador de boletos y selector por admin vendedor */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-[#E5E7EB]/70">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <label className="text-xs font-semibold text-[#374151] whitespace-nowrap">
+                          Filtrar por Vendedor:
+                        </label>
+                        <select
+                          value={ticketSellerFilter}
+                          onChange={(e) => setTicketSellerFilter(e.target.value)}
+                          className="text-xs bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl px-2.5 py-1.5 text-[#0F1115] focus:outline-none focus:border-[#0F1115]"
+                        >
+                          <option value="all">Todos los Administradores ({operationalAdmins.length})</option>
+                          {operationalAdmins.map((adm) => (
+                            <option key={adm.id} value={adm.id}>
+                              {adm.name} ({adm.totalSold} tks)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="relative w-full sm:w-72">
+                        <Search className="w-3.5 h-3.5 text-[#9CA3AF] absolute left-3 top-2.5" />
+                        <input
+                          type="text"
+                          placeholder="Buscar por boleto (#0001), comprador o DNI..."
+                          value={ticketSearch}
+                          onChange={(e) => setTicketSearch(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 text-xs bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] focus:outline-none focus:border-[#0F1115] focus:bg-white transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Boletos con Administrador Vendedor visible */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB] text-[#6B7280] uppercase tracking-wider font-semibold">
+                          <th className="py-3 px-4">Boleto N°</th>
+                          <th className="py-3 px-4">Comprador</th>
+                          <th className="py-3 px-4">DNI / Teléfono</th>
+                          <th className="py-3 px-4">Admin que realizó la venta</th>
+                          <th className="py-3 px-4 text-center">Monto</th>
+                          <th className="py-3 px-4">Hora de Emisión</th>
+                          <th className="py-3 px-4 text-center">Comprobante</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E5E7EB]">
+                        {filteredSalesTickets.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-8 text-center text-[#6B7280]">
+                              No hay ventas registradas que coincidan con la búsqueda.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSalesTickets.slice(0, 30).map((t) => (
+                            <tr key={t.id} className="hover:bg-[#FAFAFA] transition-colors">
+                              <td className="py-3 px-4">
+                                <span className="font-mono font-bold text-sm text-[#0F1115] bg-[#F5F5F3] px-2 py-0.5 rounded-md border border-[#E5E7EB]">
+                                  {t.formattedNumber}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="font-bold text-[#111827] block">
+                                  {t.buyerName}
+                                </span>
+                                <span className="text-[10px] text-[#6B7280] font-mono">
+                                  Cód: {t.verificationCode}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 font-mono text-xs">
+                                <div className="text-[#374151] font-medium">DNI: {t.dni}</div>
+                                <div className="text-[11px] text-[#6B7280]">{t.phone || 'Sin celular'}</div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-md bg-[#0F1115] text-white text-[10px] font-bold flex items-center justify-center font-mono shrink-0">
+                                    {t.registeredBy ? t.registeredBy.substring(0, 2).toUpperCase() : 'AD'}
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-[#0F1115] block leading-tight">
+                                      {t.registeredBy || 'Administrador Autorizado'}
+                                    </span>
+                                    <span className="text-[10px] text-[#059669] font-medium">
+                                      Punto de Venta Oficial
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono font-bold text-[#059669]">
+                                S/ {Number(t.price || 10).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-4 text-[#6B7280] font-mono text-[11px]">
+                                {t.timeFormatted || 'Reciente'}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                {onVerifyTicket && (
+                                  <button
+                                    onClick={() => onVerifyTicket(t)}
+                                    className="px-2.5 py-1 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                    title="Ver Comprobante Digital y QR"
+                                  >
+                                    <span>Ver QR</span>
+                                    <ExternalLink className="w-3 h-3 text-[#059669]" />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))
                         )}
                       </tbody>
                     </table>

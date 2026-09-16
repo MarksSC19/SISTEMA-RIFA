@@ -34,11 +34,11 @@ export const api = {
     return res.json();
   },
 
-  async changePassword(currentPassword: string, newPassword: string) {
+  async changePassword(currentPassword: string, newPassword: string, dni?: string) {
     const res = await fetch(`${API_BASE}/auth/change-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({ currentPassword, newPassword, dni }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al cambiar contraseña');
