@@ -30,12 +30,14 @@ import {
   TrendingUp,
   Target,
   BarChart3,
-  ArrowUpDown
+  ArrowUpDown,
+  User
 } from 'lucide-react';
 import { Raffle, AdminUser, AuditLog, Ticket, Prize, AuthUser, SystemConfig } from '../types';
 import { PrizeManagementModal } from './PrizeManagementModal';
 import { RaffleModal } from './RaffleModal';
 import { AdminUserModal } from './AdminUserModal';
+import { SuperAdminProfileModal } from './SuperAdminProfileModal';
 
 interface Props {
   raffles: Raffle[];
@@ -53,6 +55,7 @@ interface Props {
   onSaveAdmin: (admin: AdminUser, password?: string) => void;
   onDeleteAdmin: (adminId: string) => void;
   onSaveConfig?: (config: SystemConfig) => void;
+  onUpdateCurrentUser?: (user: AuthUser) => void;
   onLogout?: () => void;
 }
 
@@ -74,6 +77,7 @@ export const SuperAdminView: React.FC<Props> = ({
   onSaveAdmin,
   onDeleteAdmin,
   onSaveConfig,
+  onUpdateCurrentUser,
   onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -97,6 +101,9 @@ export const SuperAdminView: React.FC<Props> = ({
   // Admin modal states
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [adminToEdit, setAdminToEdit] = useState<AdminUser | null>(null);
+
+  // Profile modal state
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // Configuration state
   const [orgName, setOrgName] = useState(config?.organizationName || 'Plataforma Oficial de Rifas Junín');
@@ -290,11 +297,22 @@ export const SuperAdminView: React.FC<Props> = ({
                   <p className="text-[11px] text-[#6B7280] truncate">{currentUser?.email || 'marksdelmissolano@gmail.com'}</p>
                 </div>
                 <div className="py-1">
-                  <div className="px-3 py-1.5 text-[#4B5563]">Rol: Super Administrador</div>
-                  <div className="px-3 py-1.5 text-[#059669] flex items-center gap-1.5">
+                  <div className="px-3 py-1 text-[#4B5563]">Rol: Super Administrador</div>
+                  <div className="px-3 py-1 text-[#059669] flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#059669]" />
                     Acceso Total Criptográfico
                   </div>
+                  <button
+                    id="superadmin-edit-profile-menu-btn"
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      setIsProfileModalOpen(true);
+                    }}
+                    className="w-full px-3 py-2 text-left text-xs font-semibold text-[#0F1115] hover:bg-[#F5F5F3] flex items-center gap-2 transition-colors cursor-pointer border-t border-[#E5E7EB] mt-1"
+                  >
+                    <User className="w-3.5 h-3.5 text-[#059669]" />
+                    <span>Mi Perfil & Contraseña</span>
+                  </button>
                 </div>
                 {onLogout && (
                   <div className="pt-1 border-t border-[#E5E7EB]">
@@ -1407,6 +1425,18 @@ export const SuperAdminView: React.FC<Props> = ({
         adminToEdit={adminToEdit}
         raffles={raffles}
         onSaveAdmin={onSaveAdmin}
+      />
+
+      {/* Superadmin Profile CRUD Modal */}
+      <SuperAdminProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        onProfileUpdated={(updated) => {
+          if (onUpdateCurrentUser) {
+            onUpdateCurrentUser(updated);
+          }
+        }}
       />
     </div>
   );

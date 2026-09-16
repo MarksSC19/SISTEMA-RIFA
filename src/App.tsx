@@ -688,6 +688,14 @@ export default function App() {
           onSaveAdmin={handleSaveAdmin}
           onDeleteAdmin={handleDeleteAdmin}
           onSaveConfig={handleSaveConfig}
+          onUpdateCurrentUser={(updated) => {
+            setCurrentUser(updated);
+            try {
+              localStorage.setItem('rifas_auth_user', JSON.stringify(updated));
+            } catch {
+              // safe fallback
+            }
+          }}
           onLogout={handleLogout}
         />
       )}

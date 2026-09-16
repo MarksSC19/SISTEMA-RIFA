@@ -45,6 +45,23 @@ export const api = {
     return data;
   },
 
+  async updateProfile(profileData: {
+    name: string;
+    email: string;
+    phone?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) {
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(profileData),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar perfil');
+    return data;
+  },
+
   logout() {
     localStorage.removeItem('rifas_jwt_token');
     localStorage.removeItem('rifas_auth_user');

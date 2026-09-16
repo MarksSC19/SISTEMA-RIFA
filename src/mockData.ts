@@ -155,13 +155,13 @@ export const INITIAL_ADMINS: AdminUser[] = RAW_ADMIN_DATA.map((admin) => ({
 export const DEMO_AUTH_USERS: (AuthUser & { password: string })[] = [
   {
     id: 'user-superadmin',
-    name: 'Marks',
-    email: 'marksdelmissolano@gmail.com',
-    dni: '00000001',
-    password: 'password123',
+    name: 'JHEYSON RYAM JORGE VASQUEZ',
+    email: 'jheyson.jorge@rifas.pe',
+    dni: '70905188',
+    password: '70905188',
     role: 'super_admin',
-    assignedQuota: 100,
-    avatarInitials: 'M',
+    assignedQuota: 20,
+    avatarInitials: 'JV',
     mustChangePassword: false,
   },
   ...RAW_ADMIN_DATA.map((admin) => ({
@@ -170,11 +170,11 @@ export const DEMO_AUTH_USERS: (AuthUser & { password: string })[] = [
     dni: admin.dni,
     email: admin.email,
     password: admin.dni, // Contraseña inicial es su DNI
-    role: 'admin' as const,
+    role: admin.dni === '70905188' ? ('super_admin' as const) : ('admin' as const),
     assignedRaffleId: 'rf-024',
     assignedQuota: 20, // Cuota fija 20 tickets
     avatarInitials: getInitials(admin.name),
-    mustChangePassword: true, // Obligatorio cambiar al primer login
+    mustChangePassword: admin.dni !== '70905188', // Los admins cambian al primer login
   })),
 ];
 

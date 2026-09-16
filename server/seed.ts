@@ -96,30 +96,24 @@ async function seed() {
   );
   console.log('✓ Raffle rf-024 seeded');
 
-  // 3. SuperAdmin User (Marks) - Acceso sin cambio forzado
-  const superAdminPassHash = await bcrypt.hash('password123', 10);
-  await client.query(
-    `INSERT INTO users (id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
-     ON CONFLICT (id) DO UPDATE SET 
-       email = $2, password_hash = $3, full_name = $4, must_change_password = false`,
-    ['usr-superadmin', 'marksdelmissolano@gmail.com', superAdminPassHash, 'Marks', '00000001', '987654321', 'super_admin', 'active', 100]
-  );
-  console.log('✓ SuperAdmin seeded (email: marksdelmissolano@gmail.com)');
+  // 3. Limpiar cualquier usuario anterior superadmin huérfano para evitar conflictos de email
+  await client.query(`DELETE FROM users WHERE id = 'usr-superadmin' OR email = 'marksdelmissolano@gmail.com';`);
 
-  // 4. 31 Admins - Contraseña inicial = Número de DNI y must_change_password = true
+  // 4. 31 Admins - Jheyson Ryam Jorge Vasquez (DNI: 70905188) es el Superadministrador Oficial
   for (const adm of RAW_ADMIN_DATA) {
     const adminId = `adm-${adm.n}`;
     const initialPassHash = await bcrypt.hash(adm.dni, 10); // Contraseña inicial es su DNI
+    const isSuper = adm.dni === '70905188'; // Jheyson Ryam Jorge Vasquez es Superadmin
     await client.query(
       `INSERT INTO users (id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (id) DO UPDATE SET 
-         email = $2, password_hash = $3, full_name = $4, dni = $5, quota = $9, must_change_password = true`,
-      [adminId, adm.email, initialPassHash, adm.name, adm.dni, '987654321', 'admin', 'active', 20]
+         email = $2, password_hash = $3, full_name = $4, dni = $5, role = $7, quota = $9, must_change_password = $10`,
+      [adminId, adm.email, initialPassHash, adm.name, adm.dni, '987654321', isSuper ? 'super_admin' : 'admin', 'active', 20, !isSuper]
     );
   }
-  console.log(`✓ 31 Admins seeded: contraseña inicial = DNI, cambio obligatorio activado, cuota = 20 tickets`);
+  console.log('✓ 31 Administradores registrados en BD.');
+  console.log('✓ Superadministrador Oficial: JHEYSON RYAM JORGE VASQUEZ (DNI: 70905188, email: jheyson.jorge@rifas.pe)');
 
   // 5. 7 Official Prizes
   for (const prz of INITIAL_PRIZES) {

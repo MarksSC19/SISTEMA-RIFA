@@ -150,4 +150,79 @@ router.get('/me', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/auth/profile - Actualizar perfil y/o contraseña de usuario autenticado
+router.put('/profile', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token no proporcionado.' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+
+    const { name, email, phone, currentPassword, newPassword } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Nombre y correo electrónico son requeridos.' });
+    }
+
+    // Verificar si el usuario desea cambiar su contraseña
+    if (newPassword && newPassword.trim().length > 0) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Debe ingresar su contraseña actual para establecer una nueva clave.' });
+      }
+      if (newPassword.trim().length < 6) {
+        return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+      }
+
+      const userRes = await db.query('SELECT password_hash FROM users WHERE id = $1', [decoded.id]);
+      if (userRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Usuario no encontrado.' });
+      }
+
+      const isMatch = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'La contraseña actual es incorrecta.' });
+      }
+
+      const newHash = await bcrypt.hash(newPassword.trim(), 10);
+      await db.query(
+        'UPDATE users SET full_name = $1, email = $2, phone = $3, password_hash = $4, must_change_password = false WHERE id = $5',
+        [name.trim(), email.trim(), phone?.trim() || '', newHash, decoded.id]
+      );
+    } else {
+      await db.query(
+        'UPDATE users SET full_name = $1, email = $2, phone = $3 WHERE id = $4',
+        [name.trim(), email.trim(), phone?.trim() || '', decoded.id]
+      );
+    }
+
+    const updatedUserRes = await db.query(
+      'SELECT id, email, full_name, dni, phone, role, quota, must_change_password FROM users WHERE id = $1',
+      [decoded.id]
+    );
+    const u = updatedUserRes.rows[0];
+
+    res.json({
+      success: true,
+      message: 'Perfil y credenciales actualizados exitosamente.',
+      user: {
+        id: u.id,
+        name: u.full_name,
+        email: u.email,
+        dni: u.dni,
+        phone: u.phone,
+        role: u.role,
+        assignedQuota: u.quota,
+        avatarInitials: getInitials(u.full_name),
+        assignedRaffleId: 'rf-024',
+        mustChangePassword: Boolean(u.must_change_password),
+      },
+    });
+  } catch (error: any) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Error interno al actualizar el perfil.' });
+  }
+});
+
 export default router;
