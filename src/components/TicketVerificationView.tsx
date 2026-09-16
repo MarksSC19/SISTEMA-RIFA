@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Check, 
-  ArrowLeft, 
-  Search, 
-  ShieldCheck, 
-  Share2, 
-  CheckCircle2, 
-  Download, 
-  Copy, 
-  LogIn, 
+import {
+  Check,
+  ArrowLeft,
+  Search,
+  ShieldCheck,
+  Share2,
+  CheckCircle2,
+  Download,
+  Copy,
+  LogIn,
   AlertTriangle,
   Ticket as TicketIcon,
   Layers,
@@ -56,7 +56,7 @@ const OFFICIAL_PRIZES: OfficialPrize[] = [
     name: 'Microondas LG NeoChef 25L',
     category: 'Electrohogar',
     description: 'Horno microondas LG NeoChef Smart Inverter 25L con tecnología EasyClean antibacterial y acabado espejado.',
-    imageUrl: 'https://images.unsplash.com/photo-1585659722983-3a675dabf23d?auto=format&fit=crop&w=600&q=80',
+    imageUrl: 'https://media.falabella.com/falabellaPE/15768826_1/w=1200,h=1200,fit=pad',
     link: 'https://www.falabella.com.pe/falabella-pe/product/15768826/horno-microondas-ms2536gis-25l-con-easyclean-lg/15768826',
   },
   {
@@ -64,7 +64,7 @@ const OFFICIAL_PRIZES: OfficialPrize[] = [
     name: '1 Tattoo Grande (Black Monkey Tattoo)',
     category: 'Arte & Tatuaje',
     description: 'Sesión completa de tatuaje personalizado de gran formato realizado por el prestigioso estudio Black Monkey Tattoo.',
-    imageUrl: 'https://images.unsplash.com/photo-1598371839696-5c5bb00bdc28?auto=format&fit=crop&w=600&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1611501275019-9b5cda994e8d?auto=format&fit=crop&w=600&q=80',
     link: 'https://www.instagram.com/black_monkeytattoo?stkn=ZDNlZDc0MzlxNW==',
   },
   {
@@ -96,7 +96,7 @@ const OFFICIAL_PRIZES: OfficialPrize[] = [
     name: '3 Tattoos Pequeños (Black Monkey Tattoo)',
     category: 'Arte & Tatuaje',
     description: 'Pack de 3 tatuajes minimalistas o de línea fina en Black Monkey Tattoo.',
-    imageUrl: 'https://images.unsplash.com/photo-1611501275019-9b5cda994e8d?auto=format&fit=crop&w=600&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1598371839696-5c5bb00bdc28?auto=format&fit=crop&w=600&q=80',
     link: 'https://www.instagram.com/black_monkeytattoo?stkn=ZDNlZDc0MzlxNW==',
   },
   {
@@ -159,11 +159,11 @@ export const TicketVerificationView: React.FC<Props> = ({
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const code = params.get('verify') || params.get('code') || params.get('ticket');
-    
+
     if (code) {
       setIsLoading(true);
       setSearchError('');
-      
+
       api.verifyPublicTicket(code.trim())
         .then((res: any) => {
           if (res && res.valid && res.ticket) {
@@ -196,9 +196,9 @@ export const TicketVerificationView: React.FC<Props> = ({
           const query = code.trim().toLowerCase();
           const localMatch = allTickets.find(
             t => t.verificationCode.toLowerCase() === query ||
-                 t.formattedNumber.toLowerCase() === query ||
-                 t.formattedNumber.replace('#', '') === query ||
-                 t.dni === code.trim()
+              t.formattedNumber.toLowerCase() === query ||
+              t.formattedNumber.replace('#', '') === query ||
+              t.dni === code.trim()
           );
 
           if (localMatch) {
@@ -232,7 +232,7 @@ export const TicketVerificationView: React.FC<Props> = ({
   }, [currentTicket, allTickets]);
 
   // URL pública de verificación del ticket activo
-  const publicVerificationUrl = currentTicket 
+  const publicVerificationUrl = currentTicket
     ? getTicketVerificationUrl(currentTicket.verificationCode, currentTicket.number)
     : '';
 
@@ -290,9 +290,9 @@ export const TicketVerificationView: React.FC<Props> = ({
     const qLower = query.toLowerCase();
     const found = allTickets.find(
       t => t.verificationCode.toLowerCase() === qLower ||
-           t.formattedNumber.toLowerCase() === qLower ||
-           t.formattedNumber.replace('#', '') === qLower ||
-           t.dni === query
+        t.formattedNumber.toLowerCase() === qLower ||
+        t.formattedNumber.replace('#', '') === qLower ||
+        t.dni === query
     );
 
     if (found) {
@@ -491,11 +491,10 @@ export const TicketVerificationView: React.FC<Props> = ({
                       key={bt.number}
                       type="button"
                       onClick={() => handleSelectOtherBuyerTicket(bt)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                        isCurrent
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${isCurrent
                           ? 'bg-emerald-600 text-white shadow-xs'
                           : 'bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                      }`}
+                        }`}
                     >
                       {bt.formattedNumber}
                     </button>
@@ -517,7 +516,7 @@ export const TicketVerificationView: React.FC<Props> = ({
             ) : (
               <div className="w-44 h-44 bg-slate-200 animate-pulse rounded-lg" />
             )}
-            
+
             <span className="mt-2 text-xs font-mono font-black tracking-widest text-slate-800 bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-xs">
               {currentTicket.verificationCode}
             </span>
