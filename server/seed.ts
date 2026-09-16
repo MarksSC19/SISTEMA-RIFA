@@ -107,7 +107,7 @@ async function seed() {
       `INSERT INTO users (id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (id) DO UPDATE SET 
-         email = $2, password_hash = $3, full_name = $4, dni = $5, role = $7, quota = $9, must_change_password = $10`,
+         email = $2, full_name = $4, dni = $5, role = $7, quota = $9`,
       [adminId, adm.email, initialPassHash, adm.name, adm.dni, '987654321', isSuper ? 'super_admin' : 'admin', 'active', 20, !isSuper]
     );
   }

@@ -48,24 +48,8 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
         onLoginSuccess(data.user);
       })
       .catch((apiErr) => {
-        // Fallback local en memoria
-        const found = DEMO_AUTH_USERS.find(u => u.dni === cleanDni);
-
-        if (found) {
-          if (
-            password.trim() === found.password || 
-            password.trim() === cleanDni ||
-            (found.dni && password.trim() === found.dni)
-          ) {
-            setIsLoading(false);
-            const { password: _, ...userWithoutPass } = found;
-            onLoginSuccess(userWithoutPass);
-            return;
-          }
-        }
-
         setIsLoading(false);
-        setErrorMessage(apiErr.message || 'Credenciales incorrectas. Verifique su número de DNI y contraseña.');
+        setErrorMessage(apiErr.message || 'Credenciales inválidas. Contraseña o DNI incorrecto.');
       });
   };
 

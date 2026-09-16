@@ -71,8 +71,16 @@ export const SuperAdminProfileModal: React.FC<Props> = ({
       setNewPassword('');
       setConfirmPassword('');
 
-      if (onProfileUpdated && res.user) {
-        onProfileUpdated(res.user);
+      if (res.token) {
+        localStorage.setItem('rifas_jwt_token', res.token);
+      }
+      if (res.user) {
+        try {
+          localStorage.setItem('rifas_auth_user', JSON.stringify(res.user));
+        } catch {}
+        if (onProfileUpdated) {
+          onProfileUpdated(res.user);
+        }
       }
 
       setTimeout(() => {

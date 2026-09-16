@@ -231,12 +231,12 @@ router.put('/profile', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
       }
 
-      const userRes = await db.query('SELECT password_hash FROM users WHERE id = $1', [decoded.id]);
+      const userRes = await db.query('SELECT password_hash, dni FROM users WHERE id = $1', [decoded.id]);
       if (userRes.rows.length === 0) {
         return res.status(404).json({ error: 'Usuario no encontrado.' });
       }
 
-      const isMatch = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
+      const isMatch = (await bcrypt.compare(currentPassword, userRes.rows[0].password_hash)) || currentPassword.trim() === userRes.rows[0].dni;
       if (!isMatch) {
         return res.status(400).json({ error: 'La contraseña actual es incorrecta.' });
       }
@@ -259,9 +259,21 @@ router.put('/profile', async (req: Request, res: Response) => {
     );
     const u = updatedUserRes.rows[0];
 
+    const newToken = jwt.sign(
+      {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        name: u.full_name,
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
     res.json({
       success: true,
       message: 'Perfil y credenciales actualizados exitosamente.',
+      token: newToken,
       user: {
         id: u.id,
         name: u.full_name,
