@@ -28,6 +28,14 @@ export const PerspectiveSwitcher: React.FC<Props> = ({
 }) => {
   if (!currentUser) return null;
 
+  // En producción se oculta la barra flotante de depuración para garantizar un diseño profesional
+  const isDevMode = Boolean((import.meta as any).env?.DEV) || (typeof window !== 'undefined' && (
+    window.location.search.includes('dev=true') || 
+    localStorage.getItem('rifas_show_dev_bar') === 'true'
+  ));
+
+  if (!isDevMode) return null;
+
   const isSuperAdmin = currentUser.role === 'super_admin';
 
   return (

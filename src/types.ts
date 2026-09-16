@@ -11,6 +11,7 @@ export interface AuthUser {
   assignedRaffleId?: string;
   assignedQuota?: number;
   avatarInitials: string;
+  mustChangePassword?: boolean;
 }
 
 export interface Prize {

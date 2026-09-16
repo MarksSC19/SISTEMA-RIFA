@@ -15,6 +15,8 @@ import { LiveDrawView } from './components/LiveDrawView';
 import { TicketVerificationView } from './components/TicketVerificationView';
 import { PerspectiveSwitcher } from './components/PerspectiveSwitcher';
 import { LoginView } from './components/LoginView';
+import { MustChangePasswordModal } from './components/MustChangePasswordModal';
+import api from './services/api';
 
 export default function App() {
   // Version check to guarantee strictly single Gran Rifa 2026 with 31 admins and 7 official prizes
@@ -90,6 +92,52 @@ export default function App() {
   const [selectedTicketForVerify, setSelectedTicketForVerify] = useState<Ticket>(() => {
     return tickets[0] || INITIAL_TICKETS[0];
   });
+
+  // Sincronización en tiempo real con la base de datos de producción (PostgreSQL :5433)
+  useEffect(() => {
+    let isMounted = true;
+    const syncWithDatabase = async () => {
+      try {
+        const [backendPrizes, backendConfig] = await Promise.all([
+          api.getPrizes().catch(() => null),
+          api.getConfig().catch(() => null),
+        ]);
+
+        if (isMounted) {
+          if (backendPrizes && Array.isArray(backendPrizes) && backendPrizes.length > 0) {
+            setPrizes(backendPrizes);
+          }
+          if (backendConfig && backendConfig.organizationName) {
+            setConfig(backendConfig);
+          }
+        }
+
+        if (currentUser) {
+          const [backendAdmins, backendTickets, backendAudit] = await Promise.all([
+            api.getAdmins().catch(() => null),
+            api.getTickets().catch(() => null),
+            api.getAuditLogs().catch(() => null),
+          ]);
+
+          if (isMounted) {
+            if (backendAdmins && Array.isArray(backendAdmins) && backendAdmins.length > 0) {
+              setAdmins(backendAdmins);
+            }
+            if (backendTickets && Array.isArray(backendTickets) && backendTickets.length > 0) {
+              setTickets(backendTickets);
+            }
+            if (backendAudit && Array.isArray(backendAudit) && backendAudit.length > 0) {
+              setAuditLogs(backendAudit);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Sync] Operando con caché local:', err);
+      }
+    };
+
+    syncWithDatabase();
+  }, [currentUser]);
 
   // Sync to local storage
   useEffect(() => {
@@ -183,10 +231,19 @@ export default function App() {
   const activeRaffle = raffles.find(r => r.id === selectedRaffleId) || raffles[0] || INITIAL_RAFFLES[0];
   const raffleTickets = tickets.filter(t => t.raffleId === activeRaffle?.id);
 
-  // Next ticket number calculation
+  // Next ticket number calculation (starts at 1 -> #0001 up to 620)
   const nextTicketNumber = tickets.length > 0 
     ? Math.max(...tickets.map(t => t.number)) + 1 
-    : 1249;
+    : 1;
+
+  // Cuota disponible para el administrador en sesión (máx 20 por admin)
+  const currentAdmin = admins.find(a => 
+    (currentUser?.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
+    (currentUser?.dni && a.dni === currentUser.dni) || 
+    (currentUser?.name && a.name === currentUser.name)
+  );
+  const currentAdminSold = currentAdmin?.totalSold || 0;
+  const availableQuota = currentUser?.role === 'super_admin' ? 620 : Math.max(0, 20 - currentAdminSold);
 
   // Login handler
   const handleLogin = (user: AuthUser) => {
@@ -198,6 +255,16 @@ export default function App() {
         setSelectedRaffleId(user.assignedRaffleId);
       }
       setCurrentView('admin');
+    }
+  };
+
+  // Password change completion handler
+  const handlePasswordChanged = (updatedUser: AuthUser) => {
+    setCurrentUser(updatedUser);
+    try {
+      localStorage.setItem('rifas_auth_user', JSON.stringify(updatedUser));
+    } catch {
+      // safe fallback
     }
   };
 
@@ -362,14 +429,16 @@ export default function App() {
   };
 
   // Ticket CRUD
-  const handleTicketCreated = (newTicket: Ticket) => {
-    setTickets(prev => [newTicket, ...prev]);
+  const handleTicketsCreated = (newTickets: Ticket[]) => {
+    if (!newTickets || newTickets.length === 0) return;
+    setTickets(prev => [...newTickets, ...prev]);
 
+    const count = newTickets.length;
     setRaffles(prev => prev.map(r => {
       if (r.id === activeRaffle.id) {
         return {
           ...r,
-          soldTickets: r.soldTickets + 1,
+          soldTickets: (r.soldTickets || 0) + count,
         };
       }
       return r;
@@ -377,27 +446,38 @@ export default function App() {
 
     if (currentUser) {
       setAdmins(prev => prev.map(a => {
-        if (a.email.toLowerCase() === currentUser.email.toLowerCase() || a.name === currentUser.name) {
+        if (
+          (currentUser.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
+          (currentUser.dni && a.dni === currentUser.dni) || 
+          a.name === currentUser.name
+        ) {
           return {
             ...a,
-            totalSold: (a.totalSold || 0) + 1,
+            totalSold: (a.totalSold || 0) + count,
           };
         }
         return a;
       }));
     }
 
+    const first = newTickets[0];
+    const last = newTickets[newTickets.length - 1];
+    const numRange = newTickets.length === 1 ? first.formattedNumber : `${first.formattedNumber} al ${last.formattedNumber} (${count} tickets)`;
     const now = new Date();
     const dateStr = `${String(now.getDate()).padStart(2, '0')} Sep ${now.getFullYear()} · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const newLog: AuditLog = {
       id: `aud-${Date.now()}`,
       timestamp: dateStr,
-      action: 'Emisión de Ticket',
+      action: 'Emisión de Tickets',
       user: currentUser?.name || 'Marks',
       raffle: activeRaffle.code,
-      detail: `Ticket ${newTicket.formattedNumber} emitido a ${newTicket.buyerName} (DNI ${newTicket.dni}). Hash ${newTicket.verificationCode}.`,
+      detail: `Boletos ${numRange} emitidos a ${first.buyerName} (DNI ${first.dni}). Total: S/ ${(count * 10).toFixed(2)}.`,
     };
     setAuditLogs(prev => [newLog, ...prev]);
+  };
+
+  const handleTicketCreated = (newTicket: Ticket) => {
+    handleTicketsCreated([newTicket]);
   };
 
   const handleUpdateTicket = (updatedTicket: Ticket) => {
@@ -568,11 +648,6 @@ export default function App() {
     }));
   };
 
-  const isPublicVerification = currentView === 'verification' && !currentUser;
-  if (!currentUser && !isPublicVerification) {
-    return <LoginView onLoginSuccess={handleLogin} />;
-  }
-
   // Synchronize body background with current view to prevent any white gap
   React.useEffect(() => {
     if (currentView === 'live_draw') {
@@ -581,6 +656,11 @@ export default function App() {
       document.body.style.backgroundColor = '#F5F5F3';
     }
   }, [currentView]);
+
+  const isPublicVerification = currentView === 'verification' && !currentUser;
+  if (!currentUser && !isPublicVerification) {
+    return <LoginView onLoginSuccess={handleLogin} />;
+  }
 
   return (
     <div
@@ -661,7 +741,7 @@ export default function App() {
         />
       )}
 
-      {/* Ticket Registration Modal (Screen 3) */}
+      {/* Ticket Registration Modal (Screen 3) with multi-ticket support */}
       <TicketRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
@@ -669,12 +749,23 @@ export default function App() {
         raffleTitle={activeRaffle?.title || ''}
         raffleCode={activeRaffle?.code || ''}
         onTicketCreated={handleTicketCreated}
+        onTicketsCreated={handleTicketsCreated}
         registeredByName={currentUser?.name}
+        maxAvailable={availableQuota}
         onViewVerification={(t) => {
           setIsRegisterModalOpen(false);
           handleViewVerification(t);
         }}
       />
+
+      {/* Mandatory password change modal on first login */}
+      {currentUser && currentUser.mustChangePassword && (
+        <MustChangePasswordModal
+          isOpen={Boolean(currentUser.mustChangePassword)}
+          currentUser={currentUser}
+          onPasswordChanged={handlePasswordChanged}
+        />
+      )}
 
       {/* Floating Perspective Switcher allowing inspection of views */}
       <PerspectiveSwitcher

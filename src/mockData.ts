@@ -83,7 +83,7 @@ export const INITIAL_RAFFLES: Raffle[] = [
     status: 'activa',
     ticketPrice: 10,
     totalTickets: 620,
-    soldTickets: 420,
+    soldTickets: 0,
     drawDate: '01/10/2026 20:00:00',
     currency: 'S/',
     assignedAdmin: 'Dayana Ramos (Coordinadora)',
@@ -138,14 +138,14 @@ const ADMIN_SALES = [
   20, 15, 18, 12, 16, 14, 20, 13, 17, 15, 18
 ];
 
-export const INITIAL_ADMINS: AdminUser[] = RAW_ADMIN_DATA.map((admin, index) => ({
+export const INITIAL_ADMINS: AdminUser[] = RAW_ADMIN_DATA.map((admin) => ({
   id: `adm-${admin.n}`,
   name: admin.name,
   dni: admin.dni,
   email: admin.email,
-  password: 'password123',
+  password: admin.dni, // Contraseña inicial es su DNI
   assignedRafflesCount: 1,
-  totalSold: ADMIN_SALES[index] ?? 15, // Venta individual de tickets hacia su meta de 20
+  totalSold: 0, // Todos arrancan en 0 / 20
   assignedQuota: 20, // Cada admin tiene 20 tickets como meta requerida
   status: 'activo' as const,
   avatarInitials: getInitials(admin.name),
@@ -162,120 +162,23 @@ export const DEMO_AUTH_USERS: (AuthUser & { password: string })[] = [
     role: 'super_admin',
     assignedQuota: 100,
     avatarInitials: 'M',
+    mustChangePassword: false,
   },
   ...RAW_ADMIN_DATA.map((admin) => ({
     id: `user-admin-${admin.n}`,
     name: admin.name,
     dni: admin.dni,
     email: admin.email,
-    password: 'password123',
+    password: admin.dni, // Contraseña inicial es su DNI
     role: 'admin' as const,
     assignedRaffleId: 'rf-024',
     assignedQuota: 20, // Cuota fija 20 tickets
     avatarInitials: getInitials(admin.name),
+    mustChangePassword: true, // Obligatorio cambiar al primer login
   })),
 ];
 
-export const INITIAL_TICKETS: Ticket[] = [
-  {
-    id: 't-1248',
-    number: 1248,
-    formattedNumber: '#1248',
-    raffleId: 'rf-024',
-    buyerName: 'Juan Pérez',
-    dni: '12345678',
-    phone: '987654321',
-    timestamp: '2026-09-14 14:32:00',
-    timeFormatted: '14:32',
-    verificationCode: 'RF-82K7X91',
-    isValid: true,
-    registeredBy: 'HANSSEL JHARETH LLANCARI MUJE',
-  },
-  {
-    id: 't-1247',
-    number: 1247,
-    formattedNumber: '#1247',
-    raffleId: 'rf-024',
-    buyerName: 'María López',
-    dni: '87654321',
-    phone: '912345678',
-    timestamp: '2026-09-14 14:29:00',
-    timeFormatted: '14:29',
-    verificationCode: 'RF-71M9W42',
-    isValid: true,
-    registeredBy: 'JHEYSON RYAM JORGE VASQUEZ',
-  },
-  {
-    id: 't-1246',
-    number: 1246,
-    formattedNumber: '#1246',
-    raffleId: 'rf-024',
-    buyerName: 'Carlos Rojas',
-    dni: '45678901',
-    phone: '998877665',
-    timestamp: '2026-09-14 14:27:00',
-    timeFormatted: '14:27',
-    verificationCode: 'RF-59A3Q18',
-    isValid: true,
-    registeredBy: 'LYAM SIDNNEY RENGIFO GOZAR',
-  },
-  {
-    id: 't-1245',
-    number: 1245,
-    formattedNumber: '#1245',
-    raffleId: 'rf-024',
-    buyerName: 'Ana Lucía Fernández',
-    dni: '73819204',
-    phone: '945612389',
-    timestamp: '2026-09-14 14:15:00',
-    timeFormatted: '14:15',
-    verificationCode: 'RF-44N8K20',
-    isValid: true,
-    registeredBy: 'Dayana Isabel Ramos Rivera',
-  },
-  {
-    id: 't-1244',
-    number: 1244,
-    formattedNumber: '#1244',
-    raffleId: 'rf-024',
-    buyerName: 'Diego Armando Silva',
-    dni: '10928374',
-    phone: '976543210',
-    timestamp: '2026-09-14 13:58:00',
-    timeFormatted: '13:58',
-    verificationCode: 'RF-90L2P77',
-    isValid: true,
-    registeredBy: 'FREDDY ALONSO JESUS RAMOS GUZMAN',
-  },
-  {
-    id: 't-038',
-    number: 38,
-    formattedNumber: '#038',
-    raffleId: 'rf-024',
-    buyerName: 'Juan Pérez',
-    dni: '12345678',
-    phone: '987654321',
-    timestamp: '2026-09-10 11:20:00',
-    timeFormatted: '11:20',
-    verificationCode: 'RF-038KP99',
-    isValid: true,
-    registeredBy: 'KEYRA CLAUDIA RICAPA CONDOR',
-  },
-  {
-    id: 't-001',
-    number: 1,
-    formattedNumber: '#001',
-    raffleId: 'rf-024',
-    buyerName: 'Juan Pérez',
-    dni: '12345678',
-    phone: '987654321',
-    timestamp: '2026-09-01 09:00:00',
-    timeFormatted: '09:00',
-    verificationCode: 'RF-82K7X91',
-    isValid: true,
-    registeredBy: 'Jhordan Kevin Espinoza Garcia',
-  },
-];
+export const INITIAL_TICKETS: Ticket[] = [];
 
 export const INITIAL_AUDIT: AuditLog[] = [
   {

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AuthUser } from '../types';
 import { DEMO_AUTH_USERS } from '../mockData';
+import api from '../services/api';
 
 interface Props {
   onLoginSuccess: (user: AuthUser) => void;
@@ -57,31 +58,36 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const found = DEMO_AUTH_USERS.find(
-        u => u.email.toLowerCase() === cleanInput ||
-             (u.dni && u.dni.toLowerCase() === cleanInput)
-      );
-
-      if (found) {
-        if (
-          password === found.password || 
-          password === 'password123' || 
-          password === 'admin123' ||
-          (found.dni && password === found.dni)
-        ) {
-          setIsLoading(false);
-          const { password: _, ...userWithoutPass } = found;
-          onLoginSuccess(userWithoutPass);
-        } else {
-          setIsLoading(false);
-          setErrorMessage('Contraseña incorrecta. Intente con "password123" o su DNI.');
-        }
-      } else {
+    // 1. Intentar autenticación real contra la API de producción (PostgreSQL en puerto 5433)
+    api.login(cleanInput, password)
+      .then((data) => {
         setIsLoading(false);
-        setErrorMessage('Usuario o DNI no encontrado. Seleccione su cuenta de la lista de administradores abajo.');
-      }
-    }, 350);
+        onLoginSuccess(data.user);
+      })
+      .catch((apiErr) => {
+        // Fallback local en caso de usar DNI o credenciales precargadas
+        const found = DEMO_AUTH_USERS.find(
+          u => u.email.toLowerCase() === cleanInput ||
+               (u.dni && u.dni.toLowerCase() === cleanInput)
+        );
+
+        if (found) {
+          if (
+            password === found.password || 
+            password === 'password123' || 
+            password === 'admin123' ||
+            (found.dni && password === found.dni)
+          ) {
+            setIsLoading(false);
+            const { password: _, ...userWithoutPass } = found;
+            onLoginSuccess(userWithoutPass);
+            return;
+          }
+        }
+
+        setIsLoading(false);
+        setErrorMessage(apiErr.message || 'Credenciales inválidas. Verifique su correo o DNI y contraseña.');
+      });
   };
 
   const handleQuickLogin = (demoUser: typeof DEMO_AUTH_USERS[0]) => {
