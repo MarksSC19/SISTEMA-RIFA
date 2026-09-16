@@ -1,1 +1,20 @@
 @import "tailwindcss";
+
+@layer base {
+  /* Evitar auto-zoom forzado de Safari iOS cuando el usuario toca un campo */
+  @media screen and (max-width: 768px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+}

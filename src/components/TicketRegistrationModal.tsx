@@ -17,6 +17,7 @@ import {
 import { Ticket } from '../types';
 import { generateQrDataUrl, generateVerificationCode, getTicketVerificationUrl } from '../utils/qrHelper';
 import { AdminBooklet } from '../utils/ticketQuota';
+import { formatPeruTime, formatPeruDateIso } from '../utils/peruDate';
 import api from '../services/api';
 
 interface Props {
@@ -162,10 +163,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
 
     // Fallback local con números preasignados del talonario
     const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const timeFormatted = `${hours}:${minutes}`;
-    const dateFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${timeFormatted}:00`;
+    const timeFormatted = formatPeruTime(now);
+    const dateFormatted = formatPeruDateIso(now);
 
     const localList: Ticket[] = [];
     for (let i = 0; i < quantity; i++) {
@@ -209,26 +208,26 @@ export const TicketRegistrationModal: React.FC<Props> = ({
     a.click();
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!currentCreatedTicket || createdTickets.length === 0) return;
 
-    let text = '';
+    const verifyUrl = getTicketVerificationUrl(currentCreatedTicket.verificationCode, currentCreatedTicket.number);
     const totalSoles = createdTickets.length * 10;
+    const timeText = formatPeruTime(currentCreatedTicket.timestamp || new Date());
 
+    let text = '';
     if (createdTickets.length === 1) {
-      const verifyUrl = getTicketVerificationUrl(currentCreatedTicket.verificationCode, currentCreatedTicket.number);
-      text = `🎟️ *RIFAS OFICIAL* - Tu Ticket ha sido emitido con éxito!\n\n` +
+      text = `🎟️ *RIFAS OFICIAL* - ¡Tu Ticket ha sido emitido con éxito!\n\n` +
         `📌 *Rifa:* ${raffleTitle} (${raffleCode})\n` +
         `🔢 *Número:* ${currentCreatedTicket.formattedNumber}\n` +
         `👤 *Titular:* ${currentCreatedTicket.buyerName}\n` +
         `🪪 *DNI:* ${currentCreatedTicket.dni}\n` +
         `💰 *Monto Abonado:* S/ 10.00\n` +
         `🔐 *Código Único:* ${currentCreatedTicket.verificationCode}\n` +
-        `🕒 *Registro:* ${currentCreatedTicket.timeFormatted}\n\n` +
+        `🕒 *Registro (Hora Perú):* ${timeText}\n\n` +
         `🌐 *Verifica tu ticket en línea:* ${verifyUrl}\n\n` +
         `¡Mucha suerte en el sorteo oficial!`;
     } else {
-      const verifyUrl = getTicketVerificationUrl(currentCreatedTicket.verificationCode, currentCreatedTicket.number);
       const ticketsListText = createdTickets
         .map((t, idx) => `  ${idx + 1}. *${t.formattedNumber}* (Cód: ${t.verificationCode})`)
         .join('\n');
@@ -237,11 +236,40 @@ export const TicketRegistrationModal: React.FC<Props> = ({
         `📌 *Rifa:* ${raffleTitle} (${raffleCode})\n` +
         `👤 *Titular:* ${currentCreatedTicket.buyerName}\n` +
         `🪪 *DNI:* ${currentCreatedTicket.dni}\n` +
-        `💰 *Total Pagado:* S/ ${totalSoles}.00 (${createdTickets.length} tickets x S/ 10)\n\n` +
+        `💰 *Total Pagado:* S/ ${totalSoles}.00 (${createdTickets.length} tickets x S/ 10)\n` +
+        `🕒 *Registro (Hora Perú):* ${timeText}\n\n` +
         `📋 *Tus Boletos Registrados:*\n${ticketsListText}\n\n` +
         `🌐 *Verifica en línea buscando por tu DNI (${currentCreatedTicket.dni}):*\n${verifyUrl}\n\n` +
         `¡Mucha suerte en el sorteo oficial!`;
     }
+
+    // Compartir mediante Web Share API si el dispositivo lo soporta (móviles iOS y Android)
+    if (navigator.share && qrUrl) {
+      try {
+        const fetchRes = await fetch(qrUrl);
+        const blob = await fetchRes.blob();
+        const qrFile = new File([blob], `ticket-${currentCreatedTicket.formattedNumber.replace('#', '')}-qr.png`, {
+          type: 'image/png',
+        });
+
+        if (navigator.canShare && navigator.canShare({ files: [qrFile] })) {
+          await navigator.share({
+            title: `Boleto Oficial ${currentCreatedTicket.formattedNumber}`,
+            text: text,
+            files: [qrFile],
+          });
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+          return;
+        }
+      } catch (err: any) {
+        if (err && err.name === 'AbortError') return; // Usuario cerró el diálogo nativo
+        console.warn('Web Share no disponible, usando fallback:', err);
+      }
+    }
+
+    // Fallback: Descargar el QR automáticamente para tener la foto lista
+    handleDownloadQr();
 
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
@@ -252,6 +280,9 @@ export const TicketRegistrationModal: React.FC<Props> = ({
     if (currentCreatedTicket.phone && currentCreatedTicket.phone.length >= 8) {
       const cleanPhone = currentCreatedTicket.phone.replace(/\D/g, '');
       const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone.startsWith('51') ? cleanPhone : '51' + cleanPhone}&text=${encodeURIComponent(text)}`;
+      window.open(waUrl, '_blank');
+    } else {
+      const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
       window.open(waUrl, '_blank');
     }
   };

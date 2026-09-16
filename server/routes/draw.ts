@@ -40,7 +40,9 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
         t.buyer_name as "buyerName",
         t.buyer_phone as phone,
         t.buyer_dni as dni,
-        u.full_name as "registeredBy"
+        u.full_name as "registeredBy",
+        u.phone as "sellerPhone",
+        u.dni as "sellerDni"
       FROM tickets t
       LEFT JOIN users u ON u.id = t.seller_admin_id
       WHERE t.raffle_id = 'rf-024' 
@@ -104,6 +106,8 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
         phone: winningTicket.phone,
         dni: winningTicket.dni,
         registeredBy: winningTicket.registeredBy,
+        sellerPhone: winningTicket.sellerPhone,
+        sellerDni: winningTicket.sellerDni,
       },
       prize: {
         id: prize.id,

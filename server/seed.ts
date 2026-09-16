@@ -65,9 +65,8 @@ async function seed() {
   // Asegurar columna must_change_password
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT true;`);
 
-  // Limpiar tickets para que todos los admins arranquen en exactamente 0 / 20
-  await client.query(`TRUNCATE TABLE tickets CASCADE;`);
-  console.log('✓ Tickets reiniciados: todos los 31 administradores inician en 0 / 20 vendidos');
+  // PROTECCIÓN DE BASE DE DATOS: No formatear tickets para preservar ventas existentes
+  // await client.query(`TRUNCATE TABLE tickets CASCADE;`);
 
   // 1. System Config
   const configs = [

@@ -492,7 +492,42 @@ export const LiveDrawView: React.FC<Props> = ({
                   </div>
                   <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    <span>Participación Verificada · DNI Válido</span>
+                    <span>Participación Verificada · DNI {winnerTicket?.dni || 'Oficial'}</span>
+                  </div>
+
+                  {/* Administrador Encargado que le vendió el boleto */}
+                  <div className="mt-3 pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-left bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-500/20">
+                    <div>
+                      <span className="text-[9px] font-mono tracking-widest text-emerald-400 uppercase font-bold block">
+                        ADMINISTRADOR ENCARGADO (VENDEDOR)
+                      </span>
+                      <span className="text-xs font-bold text-white block">
+                        {winnerTicket?.registeredBy || 'Administrador Oficial'}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        Responsable de coordinar la entrega oficial
+                      </span>
+                    </div>
+
+                    {/* Botón WhatsApp de contacto directo */}
+                    <button
+                      onClick={() => {
+                        const winnerName = winnerTicket?.buyerName || 'Estimado(a)';
+                        const ticketNum = winnerTicket?.formattedNumber || '';
+                        const prizeName = activePrize ? getCleanPrizeName(activePrize.name) : 'Premio Oficial';
+                        const msg = `🎉 *¡FELICITACIONES! GANADOR DE LA GRAN RIFA 2026*\n\nHola *${winnerName}*, te informamos con gran alegría que tu boleto *${ticketNum}* acaba de salir GANADOR del premio:\n🏆 *${prizeName}*\n\nAdmin Encargado: ${winnerTicket?.registeredBy || 'Operador Oficial'}.\n\nPor favor comunícate con nosotros para coordinar la entrega formal. ¡Muchas felicidades!`;
+                        const cleanPhone = (winnerTicket?.phone || '').replace(/\D/g, '');
+                        const waUrl = cleanPhone.length >= 8 
+                          ? `https://api.whatsapp.com/send?phone=${cleanPhone.startsWith('51') ? cleanPhone : '51' + cleanPhone}&text=${encodeURIComponent(msg)}`
+                          : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+                        window.open(waUrl, '_blank');
+                      }}
+                      className="w-full sm:w-auto h-9 px-3.5 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/40 cursor-pointer shrink-0 transition-transform active:scale-95"
+                      title="Contactar al ganador por WhatsApp"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Contactar por WhatsApp</span>
+                    </button>
                   </div>
                 </div>
 

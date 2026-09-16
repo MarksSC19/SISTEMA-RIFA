@@ -25,7 +25,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
         t.status,
         (t.status = 'valid') as "isValid",
         t.sold_at as timestamp,
-        TO_CHAR(t.sold_at, 'HH24:MI') as "timeFormatted",
+        TO_CHAR(t.sold_at AT TIME ZONE 'America/Lima', 'HH12:MI AM') as "timeFormatted",
         u.full_name as "registeredBy",
         t.seller_admin_id as "sellerAdminId",
         t.verification_hash as "verificationHash"
