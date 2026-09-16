@@ -200,7 +200,7 @@ export const MustChangePasswordModal: React.FC<Props> = ({
                     try {
                       localStorage.removeItem('rifas_auth_user');
                       localStorage.removeItem('rifas_jwt_token');
-                    } catch {}
+                    } catch { }
                     onLogout();
                   }}
                   className="w-full mt-2 py-2 text-center text-xs font-semibold text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
