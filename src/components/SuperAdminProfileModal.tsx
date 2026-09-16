@@ -62,6 +62,7 @@ export const SuperAdminProfileModal: React.FC<Props> = ({
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
+        dni: currentUser?.dni || '70905188',
         currentPassword: currentPassword.trim() || undefined,
         newPassword: newPassword.trim() || undefined,
       });

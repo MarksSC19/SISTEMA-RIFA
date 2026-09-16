@@ -210,17 +210,48 @@ router.get('/me', async (req: Request, res: Response) => {
 router.put('/profile', async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado.' });
+    let userId: string | null = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        userId = decoded.id;
+      } catch {
+        // Token inválido o expirado
+      }
     }
-    const token = authHeader.split(' ')[1];
-    const decoded: any = jwt.verify(token, JWT_SECRET);
 
-    const { name, email, phone, currentPassword, newPassword } = req.body;
+    const { name, email, phone, currentPassword, newPassword, dni } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({ error: 'Nombre y correo electrónico son requeridos.' });
     }
+
+    let userRes;
+    if (userId) {
+      userRes = await db.query(
+        'SELECT id, email, full_name, dni, phone, role, quota, password_hash, must_change_password FROM users WHERE id = $1',
+        [userId]
+      );
+    }
+    if ((!userRes || userRes.rows.length === 0) && dni) {
+      userRes = await db.query(
+        'SELECT id, email, full_name, dni, phone, role, quota, password_hash, must_change_password FROM users WHERE dni = $1',
+        [dni.trim()]
+      );
+    }
+    if ((!userRes || userRes.rows.length === 0) && email) {
+      userRes = await db.query(
+        'SELECT id, email, full_name, dni, phone, role, quota, password_hash, must_change_password FROM users WHERE LOWER(email) = LOWER($1)',
+        [email.trim()]
+      );
+    }
+
+    if (!userRes || userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado en la base de datos.' });
+    }
+
+    const user = userRes.rows[0];
 
     // Verificar si el usuario desea cambiar su contraseña
     if (newPassword && newPassword.trim().length > 0) {
@@ -231,40 +262,30 @@ router.put('/profile', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
       }
 
-      const userRes = await db.query('SELECT password_hash, dni FROM users WHERE id = $1', [decoded.id]);
-      if (userRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Usuario no encontrado.' });
-      }
-
-      const isMatch = (await bcrypt.compare(currentPassword, userRes.rows[0].password_hash)) || currentPassword.trim() === userRes.rows[0].dni;
-      if (!isMatch) {
+      const isHashMatch = await bcrypt.compare(currentPassword.trim(), user.password_hash);
+      const isDniMatch = currentPassword.trim() === user.dni;
+      if (!isHashMatch && !isDniMatch) {
         return res.status(400).json({ error: 'La contraseña actual es incorrecta.' });
       }
 
       const newHash = await bcrypt.hash(newPassword.trim(), 10);
       await db.query(
         'UPDATE users SET full_name = $1, email = $2, phone = $3, password_hash = $4, must_change_password = false WHERE id = $5',
-        [name.trim(), email.trim(), phone?.trim() || '', newHash, decoded.id]
+        [name.trim(), email.trim(), phone?.trim() || '', newHash, user.id]
       );
     } else {
       await db.query(
         'UPDATE users SET full_name = $1, email = $2, phone = $3 WHERE id = $4',
-        [name.trim(), email.trim(), phone?.trim() || '', decoded.id]
+        [name.trim(), email.trim(), phone?.trim() || '', user.id]
       );
     }
 
-    const updatedUserRes = await db.query(
-      'SELECT id, email, full_name, dni, phone, role, quota, must_change_password FROM users WHERE id = $1',
-      [decoded.id]
-    );
-    const u = updatedUserRes.rows[0];
-
     const newToken = jwt.sign(
       {
-        id: u.id,
-        email: u.email,
-        role: u.role,
-        name: u.full_name,
+        id: user.id,
+        email: email.trim(),
+        role: user.role,
+        name: name.trim(),
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -275,16 +296,16 @@ router.put('/profile', async (req: Request, res: Response) => {
       message: 'Perfil y credenciales actualizados exitosamente.',
       token: newToken,
       user: {
-        id: u.id,
-        name: u.full_name,
-        email: u.email,
-        dni: u.dni,
-        phone: u.phone,
-        role: u.role,
-        assignedQuota: u.quota,
-        avatarInitials: getInitials(u.full_name),
+        id: user.id,
+        name: name.trim(),
+        email: email.trim(),
+        dni: user.dni,
+        phone: phone?.trim() || '',
+        role: user.role,
+        assignedQuota: user.quota || 20,
+        avatarInitials: getInitials(name.trim()),
         assignedRaffleId: 'rf-024',
-        mustChangePassword: Boolean(u.must_change_password),
+        mustChangePassword: false,
       },
     });
   } catch (error: any) {

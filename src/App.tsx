@@ -349,6 +349,7 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('rifas_auth_user');
+    localStorage.removeItem('rifas_jwt_token');
   };
 
   // Raffle CRUD

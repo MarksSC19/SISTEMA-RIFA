@@ -49,6 +49,7 @@ export const api = {
     name: string;
     email: string;
     phone?: string;
+    dni?: string;
     currentPassword?: string;
     newPassword?: string;
   }) {
@@ -59,6 +60,9 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar perfil');
+    if (data.token) {
+      localStorage.setItem('rifas_jwt_token', data.token);
+    }
     return data;
   },
 

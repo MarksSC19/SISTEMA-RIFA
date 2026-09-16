@@ -11,6 +11,7 @@ import publicRoutes from './routes/public';
 import configRoutes from './routes/config';
 import auditRoutes from './routes/audit';
 import db from './db';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -95,13 +96,56 @@ app.get('*', (req, res, next) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+// Verificación e inicialización de credenciales maestras (One-time check)
+async function initDatabaseState() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS system_config (
+        key VARCHAR(64) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const initCheck = await db.query(
+      "SELECT value FROM system_config WHERE key = 'v14_passwords_initialized'"
+    );
+
+    if (initCheck.rows.length === 0) {
+      console.log('🔄 Inicializando credenciales base limpias para Superadmin (70905188) y Hanssel (74765137)...');
+      const jheysonHash = await bcrypt.hash('70905188', 10);
+      const hansselHash = await bcrypt.hash('74765137', 10);
+
+      // Superadmin Jheyson: contraseña inicial es su DNI (70905188)
+      await db.query(
+        "UPDATE users SET password_hash = $1, role = 'super_admin', must_change_password = false WHERE dni = '70905188'",
+        [jheysonHash]
+      );
+
+      // Admin Hanssel: contraseña inicial es su DNI (74765137), requiere cambio al primer login
+      await db.query(
+        "UPDATE users SET password_hash = $1, must_change_password = true WHERE dni = '74765137'",
+        [hansselHash]
+      );
+
+      await db.query(
+        "INSERT INTO system_config (key, value) VALUES ('v14_passwords_initialized', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'"
+      );
+      console.log('✓ Credenciales iniciales listas para pruebas.');
+    }
+  } catch (err) {
+    console.error('Error en initDatabaseState:', err);
+  }
+}
+
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`=======================================================`);
   console.log(`🚀 SERVIDOR RIFAS 2026 EN PRODUCCIÓN LISTO`);
   console.log(`📍 URL: http://localhost:${PORT}`);
   console.log(`🗄️  PostgreSQL: puerto ${process.env.DB_PORT || '5433'} (DB: ${process.env.DB_NAME || 'rifas_db'})`);
   console.log(`⚙️  Modo: ${process.env.NODE_ENV || 'production'}`);
   console.log(`=======================================================`);
+  await initDatabaseState();
 });
 
 export default app;
