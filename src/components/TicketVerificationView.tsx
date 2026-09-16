@@ -58,6 +58,39 @@ export const TicketVerificationView: React.FC<Props> = ({
     setCurrentTicket(ticket);
   }, [ticket]);
 
+  // Si se abre directamente con ?verify= o ?code=, consultar automáticamente la API de producción
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('verify') || params.get('code') || params.get('ticket');
+    if (code) {
+      api.verifyPublicTicket(code.trim()).then((res: any) => {
+        if (res && res.valid && res.ticket) {
+          const t = res.ticket;
+          setCurrentTicket({
+            id: `t-${t.number}`,
+            number: t.number,
+            formattedNumber: t.formattedNumber,
+            raffleId: 'rf-024',
+            buyerName: t.buyerName,
+            dni: t.dni,
+            phone: '***-***-***',
+            timestamp: String(t.issuedAt || t.timestamp),
+            timeFormatted: new Date(t.issuedAt || t.timestamp || Date.now()).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+            verificationCode: t.verificationCode,
+            isValid: true,
+            registeredBy: t.registeredBy || 'Administrador Autorizado',
+          });
+          if (Array.isArray(res.buyerAllTickets) && res.buyerAllTickets.length > 0) {
+            setBuyerAllTickets(res.buyerAllTickets);
+          }
+        }
+      }).catch((err) => {
+        console.warn('Auto-verify URL lookup:', err);
+      });
+    }
+  }, []);
+
   // Cargar otros tickets del mismo comprador desde la lista local o servidor
   useEffect(() => {
     if (currentTicket && currentTicket.dni && currentTicket.dni !== 'No especificado') {

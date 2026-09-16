@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, X, Share2, Copy, ArrowRight, Smartphone, User, CreditCard, Download, Plus, Minus, Layers } from 'lucide-react';
+import { 
+  Check, 
+  X, 
+  Share2, 
+  ArrowRight, 
+  Download, 
+  Plus, 
+  Minus, 
+  Layers, 
+  ShieldCheck, 
+  CheckCircle2, 
+  Ticket as TicketIcon,
+  Lock
+} from 'lucide-react';
 import { Ticket } from '../types';
 import { generateQrDataUrl, generateVerificationCode, getTicketVerificationUrl } from '../utils/qrHelper';
+import { AdminBooklet } from '../utils/ticketQuota';
 import api from '../services/api';
 
 interface Props {
@@ -16,6 +30,8 @@ interface Props {
   onViewVerification?: (ticket: Ticket) => void;
   registeredByName?: string;
   maxAvailable?: number;
+  adminBooklet?: AdminBooklet;
+  availableNumbers?: number[];
 }
 
 export const TicketRegistrationModal: React.FC<Props> = ({
@@ -29,6 +45,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
   onViewVerification,
   registeredByName,
   maxAvailable = 20,
+  adminBooklet,
+  availableNumbers = [],
 }) => {
   const [buyerName, setBuyerName] = useState('');
   const [dni, setDni] = useState('');
@@ -40,7 +58,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
   const [qrUrl, setQrUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  const maxAllowed = Math.min(20, Math.max(1, maxAvailable));
+  const effectiveAvailable = availableNumbers.length > 0 ? availableNumbers.length : maxAvailable;
+  const maxAllowed = Math.min(20, Math.max(1, effectiveAvailable));
 
   // Ajustar cantidad si excede el cupo disponible
   useEffect(() => {
@@ -83,6 +102,11 @@ export const TicketRegistrationModal: React.FC<Props> = ({
     onClose();
   };
 
+  // Cálculo de los números exactos que se van a emitir en este lote
+  const projectedNumbers = availableNumbers.length >= quantity
+    ? availableNumbers.slice(0, quantity)
+    : Array.from({ length: quantity }, (_, i) => nextTicketNumber + i);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!buyerName.trim()) return;
@@ -90,7 +114,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Registro atómico y validación de cuota en PostgreSQL (puerto 5433)
+      // 1. Registro atómico y validación de cuota en PostgreSQL con talonario preasignado
       const res = await api.createTicket({
         buyerName: buyerName.trim(),
         dni: dni.trim() || 'No especificado',
@@ -128,7 +152,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
       setIsSubmitting(false);
       return;
     } catch (apiErr: any) {
-      if (apiErr.message && (apiErr.message.includes('Cuota máxima') || apiErr.message.includes('agotado'))) {
+      if (apiErr.message && (apiErr.message.includes('Talonario') || apiErr.message.includes('Cuota'))) {
         alert(apiErr.message);
         setIsSubmitting(false);
         return;
@@ -136,7 +160,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
       console.warn('API fallback to local generation:', apiErr);
     }
 
-    // Fallback local en memoria si la API fallara
+    // Fallback local con números preasignados del talonario
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -145,7 +169,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
 
     const localList: Ticket[] = [];
     for (let i = 0; i < quantity; i++) {
-      const num = nextTicketNumber + i;
+      const num = projectedNumbers[i];
       const vCode = generateVerificationCode(num);
       localList.push({
         id: `t-${num}`,
@@ -235,34 +259,37 @@ export const TicketRegistrationModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div id="ticket-modal-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F1115]/60 backdrop-blur-xs">
+    <div id="ticket-modal-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#0F1115]/70 backdrop-blur-xs overflow-y-auto">
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        initial={{ opacity: 0, scale: 0.95, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 10 }}
-        transition={{ duration: 0.18, ease: 'easeOut' }}
-        className="w-full max-w-md bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] shadow-2xl overflow-hidden"
+        exit={{ opacity: 0, scale: 0.95, y: 12 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB]/80 bg-[#FAFAFA]">
+        {/* Cabecera Móvil Ergonómica */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50/80 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold tracking-wider text-[#6B7280] uppercase">
+            <span className="text-xs font-bold tracking-wider text-slate-700 uppercase">
               {createdTickets.length > 0 ? 'Comprobante Oficial' : 'Emisión de Tickets'}
             </span>
-            <span className="text-[10px] font-mono text-[#059669] bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-0.5 rounded-full font-bold">
-              Meta Admin: 20 max
-            </span>
+            {adminBooklet && (
+              <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+                Talonario: {adminBooklet.label}
+              </span>
+            )}
           </div>
           <button
             id="close-ticket-modal-btn"
             onClick={handleClose}
-            className="p-1 rounded-md text-[#6B7280] hover:text-[#0F1115] hover:bg-[#E5E7EB]/50 transition-colors cursor-pointer"
+            className="p-1.5 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer"
+            aria-label="Cerrar modal"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 md:p-8">
+        <div className="p-5 sm:p-6 overflow-y-auto grow">
           <AnimatePresence mode="wait">
             {createdTickets.length === 0 ? (
               /* FORMULARIO DE REGISTRO CON SELECTOR DE CANTIDAD */
@@ -272,27 +299,27 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onSubmit={handleSubmit}
-                className="space-y-5"
+                className="space-y-4"
               >
                 <div className="text-center">
-                  <h2 className="text-xl font-bold tracking-tight text-[#0F1115] uppercase">
-                    VENTA DE TICKETS
+                  <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 uppercase">
+                    REGISTRAR VENTA
                   </h2>
-                  <p className="mt-1 text-xs text-[#6B7280]">
-                    {raffleTitle} · Cupo restante del operador: <strong className="text-[#059669]">{maxAllowed} tickets</strong>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {raffleTitle} · Boletos disponibles: <strong className="text-emerald-600 font-bold">{maxAllowed} de 20</strong>
                   </p>
                 </div>
 
                 {/* SELECTOR DE CANTIDAD DE BOLETOS */}
-                <div className="p-4 bg-[#F9FAFB] rounded-xl border border-[#E5E7EB] space-y-3">
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-bold text-[#111827] uppercase tracking-wider flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-[#059669]" />
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-emerald-600" />
                         Cantidad de Boletos
                       </span>
-                      <span className="text-[11px] text-[#6B7280] block">
-                        Precio: S/ 10.00 por ticket
+                      <span className="text-[11px] text-slate-500 block">
+                        S/ 10.00 por boleto
                       </span>
                     </div>
 
@@ -301,13 +328,13 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => setQuantity(Math.max(1, quantity - 1))}
                         disabled={quantity <= 1}
-                        className="w-8 h-8 rounded-lg bg-white border border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-40 flex items-center justify-center font-bold transition-colors cursor-pointer"
+                        className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-35 flex items-center justify-center font-bold transition-all shadow-xs cursor-pointer"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
 
-                      <div className="w-12 text-center">
-                        <span className="text-xl font-mono font-extrabold text-[#0F1115]">
+                      <div className="w-10 text-center">
+                        <span className="text-xl font-mono font-black text-slate-900">
                           {quantity}
                         </span>
                       </div>
@@ -316,14 +343,14 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => setQuantity(Math.min(maxAllowed, quantity + 1))}
                         disabled={quantity >= maxAllowed}
-                        className="w-8 h-8 rounded-lg bg-white border border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-40 flex items-center justify-center font-bold transition-colors cursor-pointer"
+                        className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-35 flex items-center justify-center font-bold transition-all shadow-xs cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
 
-                  {/* Botones de selección rápida si el cupo lo permite */}
+                  {/* Botones de selección rápida */}
                   <div className="flex items-center gap-1.5 pt-1">
                     {[1, 2, 3, 5, 10].map((num) => (
                       <button
@@ -331,12 +358,12 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => setQuantity(num)}
                         disabled={num > maxAllowed}
-                        className={`flex-1 py-1 text-xs font-mono font-medium rounded-md transition-all cursor-pointer ${
+                        className={`flex-1 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
                           quantity === num
-                            ? 'bg-[#0F1115] text-white shadow-xs'
+                            ? 'bg-slate-900 text-white shadow-xs'
                             : num > maxAllowed
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-white border border-[#E5E7EB] text-[#374151] hover:border-[#059669]'
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:border-emerald-500'
                         }`}
                       >
                         {num}
@@ -345,18 +372,20 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                   </div>
 
                   {/* Resumen de Monto en Soles y Numeración asignada */}
-                  <div className="pt-2 border-t border-[#E5E7EB] flex items-center justify-between text-xs">
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-[#6B7280] block text-[10px] uppercase font-semibold">Numeración</span>
-                      <span className="font-mono font-bold text-[#0F1115]">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">
+                        {quantity === 1 ? 'Boleto Asignado' : 'Boletos Asignados'}
+                      </span>
+                      <span className="font-mono font-bold text-slate-900">
                         {quantity === 1 
-                          ? `#${String(nextTicketNumber).padStart(4, '0')}`
-                          : `#${String(nextTicketNumber).padStart(4, '0')} al #${String(nextTicketNumber + quantity - 1).padStart(4, '0')}`}
+                          ? `#${String(projectedNumbers[0]).padStart(4, '0')}`
+                          : `#${String(projectedNumbers[0]).padStart(4, '0')} al #${String(projectedNumbers[projectedNumbers.length - 1]).padStart(4, '0')}`}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[#6B7280] block text-[10px] uppercase font-semibold">Total a Cobrar</span>
-                      <span className="text-sm font-bold text-[#059669] font-mono">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Total a Cobrar</span>
+                      <span className="text-sm font-extrabold text-emerald-600 font-mono">
                         S/ {(quantity * 10).toFixed(2)}
                       </span>
                     </div>
@@ -364,123 +393,111 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                 </div>
 
                 {/* Campos del Comprador */}
-                <div className="space-y-3.5 text-left">
+                <div className="space-y-3 text-left">
                   <div>
-                    <label className="block text-xs font-medium text-[#4B5563] mb-1 uppercase tracking-wide">
-                      Nombre completo del titular <span className="text-[#059669]">*</span>
+                    <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">
+                      Nombre completo del titular <span className="text-emerald-600">*</span>
                     </label>
-                    <div className="relative">
-                      <input
-                        id="ticket-buyer-name-input"
-                        type="text"
-                        required
-                        placeholder="Ej. Juan Pérez Quispe"
-                        value={buyerName}
-                        onChange={(e) => setBuyerName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-sm bg-white border border-[#E5E7EB] rounded-xl text-[#0F1115] placeholder-[#9CA3AF] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669] transition-all"
-                        autoFocus
-                      />
-                      <User className="w-4 h-4 text-[#9CA3AF] absolute right-3.5 top-3" />
-                    </div>
+                    <input
+                      id="buyer-name-input"
+                      type="text"
+                      required
+                      placeholder="Ej. Juan Pérez Quispe"
+                      value={buyerName}
+                      onChange={(e) => setBuyerName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                    />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-[#4B5563] mb-1 uppercase tracking-wide">
-                      DNI / Documento de Identidad <span className="text-[#059669]">*</span>
-                    </label>
-                    <div className="relative">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">
+                        DNI del titular <span className="text-emerald-600">*</span>
+                      </label>
                       <input
-                        id="ticket-dni-input"
+                        id="buyer-dni-input"
                         type="text"
-                        required
-                        maxLength={12}
-                        placeholder="Ej. 74765137"
+                        maxLength={8}
+                        placeholder="8 dígitos"
                         value={dni}
-                        onChange={(e) => setDni(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-sm font-mono bg-white border border-[#E5E7EB] rounded-xl text-[#0F1115] placeholder-[#9CA3AF] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669] transition-all"
+                        onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
                       />
-                      <CreditCard className="w-4 h-4 text-[#9CA3AF] absolute right-3.5 top-3" />
                     </div>
-                    <span className="text-[10px] text-[#6B7280] mt-0.5 block">
-                      Permitirá al comprador consultar todos sus tickets juntos en el verificador web.
-                    </span>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-[#4B5563] mb-1 uppercase tracking-wide">
-                      Celular / WhatsApp (Para envío de comprobante)
-                    </label>
-                    <div className="relative">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">
+                        WhatsApp / Celular
+                      </label>
                       <input
-                        id="ticket-phone-input"
+                        id="buyer-phone-input"
                         type="tel"
-                        maxLength={15}
-                        placeholder="987654321"
+                        maxLength={9}
+                        placeholder="9 dígitos"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-sm font-mono bg-white border border-[#E5E7EB] rounded-xl text-[#0F1115] placeholder-[#9CA3AF] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669] transition-all"
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
                       />
-                      <Smartphone className="w-4 h-4 text-[#9CA3AF] absolute right-3.5 top-3" />
                     </div>
                   </div>
                 </div>
 
                 <div className="pt-2">
                   <button
-                    id="submit-generate-ticket-btn"
+                    id="submit-ticket-btn"
                     type="submit"
-                    disabled={isSubmitting || !buyerName.trim() || maxAllowed <= 0}
-                    className="w-full py-3 px-6 bg-[#0F1115] hover:bg-[#23272F] disabled:opacity-50 text-white font-medium text-sm tracking-wide rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={isSubmitting || !buyerName.trim() || effectiveAvailable === 0}
+                    className="w-full h-12 bg-slate-950 hover:bg-slate-900 active:scale-[0.99] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {isSubmitting ? (
-                      <span>Generando hash criptográfico...</span>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
-                      <span>
-                        EMITIR {quantity} {quantity === 1 ? 'TICKET' : 'TICKETS'} · S/ {(quantity * 10).toFixed(2)}
-                      </span>
+                      <>
+                        <TicketIcon className="w-4 h-4 text-emerald-400" />
+                        <span>Confirmar Venta (S/ {(quantity * 10).toFixed(2)})</span>
+                      </>
                     )}
                   </button>
-                  <p className="mt-2 text-[11px] text-[#6B7280] text-center">
-                    Garantía con Hash SHA-256 e inserción atómica en base de datos.
-                  </p>
                 </div>
               </motion.form>
             ) : (
-              /* VISTA DE ÉXITO: TICKET(S) EMITIDO(S) */
+              /* VISTA DE ÉXITO ULTRA MODERNA Y ERGONÓMICA (MOBILE FIRST) */
               <motion.div
                 key="created-ticket"
-                initial={{ opacity: 0, scale: 0.98 }}
+                initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center space-y-4"
+                className="text-center space-y-3.5"
               >
-                <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 bg-[#ECFDF5] text-[#059669] text-xs font-semibold rounded-full border border-[#A7F3D0]">
-                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                {/* Badge Oficial de Éxito */}
+                <div className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>
                     {createdTickets.length === 1 
                       ? 'TICKET REGISTRADO CON ÉXITO' 
-                      : `¡${createdTickets.length} TICKETS ASIGNADOS! (S/ ${createdTickets.length * 10}.00)`}
+                      : `¡${createdTickets.length} TICKETS REGISTRADOS! (S/ ${createdTickets.length * 10}.00)`}
                   </span>
                 </div>
 
+                {/* Número y Titular */}
                 <div>
-                  <div className="text-3xl font-extrabold tracking-tight text-[#0F1115] font-mono">
+                  <div className="text-4xl font-black tracking-tight text-slate-900 font-mono">
                     {currentCreatedTicket.formattedNumber}
                   </div>
-                  <div className="text-base font-semibold text-[#111827] mt-0.5">
+                  <div className="text-base sm:text-lg font-bold text-slate-800 mt-1 uppercase tracking-tight">
                     {currentCreatedTicket.buyerName}
                   </div>
-                  <div className="text-xs text-[#6B7280]">
-                    DNI: <strong className="text-[#111827]">{currentCreatedTicket.dni}</strong> · Total: S/ {(createdTickets.length * 10).toFixed(2)}
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    DNI: <strong className="text-slate-800 font-semibold">{currentCreatedTicket.dni}</strong> · Total: S/ {(createdTickets.length * 10).toFixed(2)}
                   </div>
                 </div>
 
-                {/* Si hay múltiples tickets, mostrar pestañas para navegar entre ellos */}
+                {/* Pestañas si son múltiples tickets */}
                 {createdTickets.length > 1 && (
-                  <div className="py-2">
-                    <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider block mb-1.5">
-                      Boletos de este comprador (clic para ver QR individual):
+                  <div className="py-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                      Boletos de este comprador (toca para ver QR):
                     </span>
-                    <div className="flex flex-wrap items-center justify-center gap-1.5 max-h-24 overflow-y-auto p-1 bg-gray-50 rounded-xl border border-gray-200">
+                    <div className="flex flex-wrap items-center justify-center gap-1.5 max-h-20 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
                       {createdTickets.map((t, idx) => (
                         <button
                           key={t.id}
@@ -488,8 +505,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                           onClick={() => setActiveTicketIndex(idx)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
                             activeTicketIndex === idx
-                              ? 'bg-[#059669] text-white shadow-xs'
-                              : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                           }`}
                         >
                           {t.formattedNumber}
@@ -499,65 +516,72 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                   </div>
                 )}
 
-                {/* QR del ticket actualmente activo */}
-                <div className="flex flex-col items-center justify-center p-3 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl mx-auto max-w-[220px]">
+                {/* Marco de QR Pasaporte Digital */}
+                <div className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-2xl mx-auto max-w-[210px] shadow-xs">
                   {qrUrl ? (
                     <img
                       src={qrUrl}
                       alt={`QR ${currentCreatedTicket.formattedNumber}`}
-                      className="w-36 h-36 object-contain rounded-md"
+                      className="w-36 h-36 object-contain rounded-lg"
                     />
                   ) : (
-                    <div className="w-36 h-36 bg-[#F5F5F3] animate-pulse rounded-md" />
+                    <div className="w-36 h-36 bg-slate-100 animate-pulse rounded-lg" />
                   )}
-                  <span className="mt-2 text-[11px] font-mono font-semibold tracking-wider text-[#4B5563] bg-white px-2.5 py-0.5 rounded border border-[#E5E7EB]">
-                    {currentCreatedTicket.verificationCode}
-                  </span>
+                  <div className="mt-2.5 flex items-center gap-1 text-[11px] font-mono font-bold tracking-wider text-slate-700 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200">
+                    <Lock className="w-3 h-3 text-emerald-600" />
+                    <span>{currentCreatedTicket.verificationCode}</span>
+                  </div>
                 </div>
 
-                {/* Acciones */}
-                <div className="space-y-2 pt-1">
-                  <div className="flex gap-2">
-                    <button
-                      id="share-ticket-btn"
-                      onClick={handleShare}
-                      className="flex-1 py-2.5 px-4 bg-[#059669] hover:bg-[#047857] text-white text-xs font-semibold tracking-wide rounded-xl transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      <span>{copied ? '¡Copiado!' : (createdTickets.length > 1 ? 'Compartir Todo (WhatsApp)' : 'Compartir (WhatsApp)')}</span>
-                    </button>
+                {/* BOTONES DE ACCIÓN REDISEÑADOS (MODERNOS & ERGONÓMICOS) */}
+                <div className="space-y-2.5 pt-1">
+                  {/* Botón Principal: WhatsApp Oficial */}
+                  <button
+                    id="share-ticket-btn"
+                    onClick={handleShare}
+                    className="w-full h-12 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.98] text-white font-bold text-sm tracking-wide rounded-2xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+                  >
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                    </svg>
+                    <span>{copied ? '¡Texto Copiado!' : (createdTickets.length > 1 ? 'Compartir Todo (WhatsApp)' : 'Compartir (WhatsApp)')}</span>
+                  </button>
 
+                  {/* Fila Secundaria: Descargar QR y Verificar Certificado */}
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       id="download-qr-btn"
                       onClick={handleDownloadQr}
-                      className="py-2.5 px-3 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="h-11 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-800 text-xs font-bold rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       title="Descargar código QR en PNG"
                     >
-                      <Download className="w-4 h-4 text-[#059669]" />
-                      <span className="hidden sm:inline">QR</span>
+                      <Download className="w-4 h-4 text-emerald-600" />
+                      <span>Descargar QR</span>
                     </button>
+
+                    {onViewVerification && (
+                      <button
+                        id="preview-verification-btn"
+                        onClick={() => {
+                          handleClose();
+                          onViewVerification(currentCreatedTicket);
+                        }}
+                        className="h-11 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 text-xs font-bold rounded-xl border border-slate-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span>Verificar Ticket</span>
+                      </button>
+                    )}
                   </div>
 
-                  {onViewVerification && (
-                    <button
-                      id="preview-verification-btn"
-                      onClick={() => {
-                        handleClose();
-                        onViewVerification(currentCreatedTicket);
-                      }}
-                      className="w-full py-2 px-4 text-xs font-medium text-[#374151] hover:text-[#0F1115] hover:bg-[#F5F5F3] border border-[#E5E7EB] rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <span>Verificar en Verificador Público</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-
+                  {/* Botón Registrar Otra Venta */}
                   <button
                     id="register-another-ticket-btn"
                     onClick={resetForm}
-                    className="w-full py-1.5 text-xs font-medium text-[#6B7280] hover:text-[#0F1115] transition-colors cursor-pointer"
+                    className="w-full h-11 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl border border-dashed border-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    Registrar otra venta
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Registrar otra venta</span>
                   </button>
                 </div>
               </motion.div>

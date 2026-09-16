@@ -98,7 +98,7 @@ const getInitials = (fullName: string): string => {
 };
 
 // Raw list of 31 admins provided by user
-const RAW_ADMIN_DATA = [
+export const RAW_ADMIN_DATA = [
   { n: 1, name: 'HANSSEL JHARETH LLANCARI MUJE', dni: '74765137', email: 'hanssel.llancari@rifas.pe' },
   { n: 2, name: 'JHEYSON RYAM JORGE VASQUEZ', dni: '70905188', email: 'jheyson.jorge@rifas.pe' },
   { n: 3, name: 'LYAM SIDNNEY RENGIFO GOZAR', dni: '72795283', email: 'lyam.rengifo@rifas.pe' },

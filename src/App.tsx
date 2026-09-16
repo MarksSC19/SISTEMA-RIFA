@@ -17,10 +17,11 @@ import { PerspectiveSwitcher } from './components/PerspectiveSwitcher';
 import { LoginView } from './components/LoginView';
 import { MustChangePasswordModal } from './components/MustChangePasswordModal';
 import api from './services/api';
+import { getAdminBooklet, getAdminAvailableNumbers } from './utils/ticketQuota';
+
+const DATA_VERSION_KEY = 'rifas_version_v13_qr_clean';
 
 export default function App() {
-  // Version check para limpiar sesiones anteriores de prueba y arrancar en Login limpio
-  const DATA_VERSION_KEY = 'rifas_version_v12_dni_clean';
   const isUpToDate = typeof window !== 'undefined' && localStorage.getItem(DATA_VERSION_KEY) === 'true';
 
   // Si la versión es antigua, limpiar sesiones guardadas de pruebas anteriores
@@ -48,7 +49,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_RAFFLES;
   });
 
-  // Prizes state (7 official prizes)
+  // Prizes state
   const [prizes, setPrizes] = useState<Prize[]>(() => {
     if (!isUpToDate) return INITIAL_PRIZES;
     const saved = localStorage.getItem('rifas_app_prizes');
@@ -97,7 +98,17 @@ export default function App() {
     };
   });
 
-  const [currentView, setCurrentView] = useState<PlatformRole>('super_admin');
+  // Si la URL contiene parámetros de verificación QR (?verify=... o ?code=...), ingresar directamente en modo público sin requerir login
+  const [currentView, setCurrentView] = useState<PlatformRole>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('verify') || params.get('code') || params.get('ticket')) {
+        return 'verification';
+      }
+    }
+    return 'super_admin';
+  });
+
   const [selectedRaffleId, setSelectedRaffleId] = useState<string>('rf-024');
   const [selectedPrizeIdForDraw, setSelectedPrizeIdForDraw] = useState<string | undefined>(undefined);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -214,48 +225,83 @@ export default function App() {
 
   // Detect QR code scan / public verification from URL: ?verify=CODE or ?code=CODE
   useEffect(() => {
-    const handleUrlVerification = () => {
+    let isMounted = true;
+    const handleUrlVerification = async () => {
       if (typeof window === 'undefined') return;
       const params = new URLSearchParams(window.location.search);
-      const verifyCode = params.get('verify') || params.get('code');
+      const verifyCode = params.get('verify') || params.get('code') || params.get('ticket');
       if (verifyCode) {
-        const query = verifyCode.trim().toLowerCase();
-        const found = tickets.find(
-          t => t.verificationCode.toLowerCase() === query ||
-               t.formattedNumber.toLowerCase() === query ||
-               t.formattedNumber.replace('#', '') === query ||
-               t.dni === query
-        );
-        if (found) {
-          setSelectedTicketForVerify(found);
-          const targetRaffle = raffles.find(r => r.id === found.raffleId);
-          if (targetRaffle) setSelectedRaffleId(targetRaffle.id);
-          setCurrentView('verification');
+        const query = verifyCode.trim();
+        setCurrentView('verification'); // Acceso público inmediato al certificado de verificación
+
+        // 1. Intentar verificación en la API de producción
+        try {
+          const res = await api.verifyPublicTicket(query);
+          if (isMounted && res && res.valid && res.ticket) {
+            const t = res.ticket;
+            const mapped: Ticket = {
+              id: `t-${t.number}`,
+              number: t.number,
+              formattedNumber: t.formattedNumber,
+              raffleId: 'rf-024',
+              buyerName: t.buyerName,
+              dni: t.dni,
+              phone: '***-***-***',
+              timestamp: String(t.timestamp || new Date().toISOString()),
+              timeFormatted: new Date(t.timestamp || Date.now()).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+              verificationCode: t.verificationCode,
+              isValid: true,
+              registeredBy: t.registeredBy || 'Administrador Autorizado',
+            };
+            setSelectedTicketForVerify(mapped);
+            return;
+          }
+        } catch {
+          // Fallback en tickets locales
+        }
+
+        // 2. Fallback con tickets en memoria
+        if (isMounted) {
+          const qLower = query.toLowerCase();
+          const found = tickets.find(
+            t => t.verificationCode.toLowerCase() === qLower ||
+                 t.formattedNumber.toLowerCase() === qLower ||
+                 t.formattedNumber.replace('#', '') === qLower ||
+                 t.dni === query
+          );
+          if (found) {
+            setSelectedTicketForVerify(found);
+            const targetRaffle = raffles.find(r => r.id === found.raffleId);
+            if (targetRaffle) setSelectedRaffleId(targetRaffle.id);
+          }
         }
       }
     };
 
     handleUrlVerification();
     window.addEventListener('popstate', handleUrlVerification);
-    return () => window.removeEventListener('popstate', handleUrlVerification);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('popstate', handleUrlVerification);
+    };
   }, [tickets, raffles]);
 
   const activeRaffle = raffles.find(r => r.id === selectedRaffleId) || raffles[0] || INITIAL_RAFFLES[0];
   const raffleTickets = tickets.filter(t => t.raffleId === activeRaffle?.id);
 
-  // Next ticket number calculation (starts at 1 -> #0001 up to 620)
-  const nextTicketNumber = tickets.length > 0 
-    ? Math.max(...tickets.map(t => t.number)) + 1 
-    : 1;
-
-  // Cuota disponible para el operador en sesión (20 tickets por admin/superadmin)
-  const currentAdmin = admins.find(a => 
-    (currentUser?.dni && a.dni === currentUser.dni) || 
-    (currentUser?.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
-    (currentUser?.name && a.name === currentUser.name)
+  // Talonario exclusivo preasignado para el operador en sesión (CERO colisiones de numeración)
+  const currentAdminBooklet = getAdminBooklet(
+    currentUser?.dni || currentUser?.id || currentUser?.name
   );
-  const currentAdminSold = currentAdmin?.totalSold || 0;
-  const availableQuota = Math.max(0, 20 - currentAdminSold);
+  const currentAdminAvailableNumbers = getAdminAvailableNumbers(
+    currentAdminBooklet,
+    tickets
+  );
+  const nextTicketNumber = currentAdminAvailableNumbers.length > 0 
+    ? currentAdminAvailableNumbers[0] 
+    : currentAdminBooklet.startNumber;
+  const availableQuota = currentAdminAvailableNumbers.length;
+  const currentAdminSold = Math.max(0, 20 - availableQuota);
 
   // Login handler
   const handleLogin = (user: AuthUser) => {
@@ -765,7 +811,7 @@ export default function App() {
         />
       )}
 
-      {/* Ticket Registration Modal (Screen 3) with multi-ticket support */}
+      {/* Ticket Registration Modal (Screen 3) with multi-ticket support and exclusive booklets */}
       <TicketRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
@@ -776,6 +822,8 @@ export default function App() {
         onTicketsCreated={handleTicketsCreated}
         registeredByName={currentUser?.name}
         maxAvailable={availableQuota}
+        adminBooklet={currentAdminBooklet}
+        availableNumbers={currentAdminAvailableNumbers}
         onViewVerification={(t) => {
           setIsRegisterModalOpen(false);
           handleViewVerification(t);

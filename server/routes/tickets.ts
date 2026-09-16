@@ -70,44 +70,78 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const quantity = Math.max(1, parseInt(req.body.quantity || '1', 10));
 
-    // 1. Validar cuota del administrador (Máximo 20 tickets vendidos)
-    const quotaCheck = await client.query(
-      `SELECT COUNT(*)::int as count FROM tickets WHERE seller_admin_id = $1 AND raffle_id = 'rf-024' AND status = 'valid'`,
+    // 1. Identificar el administrador y su número de talonario exclusivo (1 a 31)
+    const userRes = await client.query(
+      `SELECT id, dni, role, full_name FROM users WHERE id = $1 OR dni = $1 LIMIT 1`,
       [sellerId]
     );
-    const currentSold = quotaCheck.rows[0].count;
-    if (currentSold + quantity > 20) {
+    const sellerUser = userRes.rows[0];
+
+    const ADMIN_DNI_MAP: { [dni: string]: number } = {
+      '74765137': 1, '70905188': 2, '72795283': 3, '71745804': 4,
+      '72741502': 5, '74602585': 6, '71694983': 7, '76564148': 8,
+      '74898956': 9, '75510293': 10, '72809187': 11, '75701962': 12,
+      '73868636': 13, '73997851': 14, '70240574': 15, '75315104': 16,
+      '74960683': 17, '77801287': 18, '60906074': 19, '71780194': 20,
+      '77801288': 21, '75075018': 22, '72095575': 23, '71247028': 24,
+      '77529113': 25, '70916278': 26, '72740540': 27, '74395059': 28,
+      '73523144': 29, '75020702': 30, '70401427': 31,
+    };
+
+    let adminN = 2; // Por defecto Jheyson (Admin 2)
+    const admMatch = String(sellerId).match(/adm-(\d+)/i);
+    if (admMatch) {
+      adminN = parseInt(admMatch[1], 10);
+    } else if (sellerUser && sellerUser.dni && ADMIN_DNI_MAP[sellerUser.dni]) {
+      adminN = ADMIN_DNI_MAP[sellerUser.dni];
+    } else if (ADMIN_DNI_MAP[String(sellerId)]) {
+      adminN = ADMIN_DNI_MAP[String(sellerId)];
+    }
+    adminN = Math.max(1, Math.min(31, adminN));
+
+    // 2. Calcular rango de talonario único: 20 números por administrador
+    const startNum = (adminN - 1) * 20 + 1;
+    const endNum = adminN * 20;
+
+    // 3. Buscar números ya emitidos dentro del talonario de este administrador
+    const occupiedCheck = await client.query(
+      `SELECT ticket_number FROM tickets 
+       WHERE raffle_id = 'rf-024' 
+         AND ticket_number BETWEEN $1 AND $2 
+         AND status = 'valid'
+       ORDER BY ticket_number ASC`,
+      [startNum, endNum]
+    );
+    const occupiedNumbers = new Set<number>(occupiedCheck.rows.map(r => r.ticket_number));
+    const availableNumbers: number[] = [];
+    for (let n = startNum; n <= endNum; n++) {
+      if (!occupiedNumbers.has(n)) {
+        availableNumbers.push(n);
+      }
+    }
+
+    if (availableNumbers.length < quantity) {
       await client.query('ROLLBACK');
-      const remaining = 20 - currentSold;
       return res.status(400).json({
-        error: `Cuota insuficiente: este administrador solo puede vender ${remaining} ticket(s) más para alcanzar su meta de 20 (intentó emitir ${quantity}).`,
+        error: `Talonario insuficiente: a este administrador solo le quedan ${availableNumbers.length} ticket(s) en su talonario asignado (#${String(startNum).padStart(4, '0')} al #${String(endNum).padStart(4, '0')}). Intentó emitir ${quantity}.`,
       });
     }
 
-    // 2. Obtener siguiente número correlativo base (1 a 620)
-    const maxNumResult = await client.query(
-      `SELECT COALESCE(MAX(ticket_number), 0) as max_num FROM tickets WHERE raffle_id = 'rf-024'`
-    );
-    let currentNumber = maxNumResult.rows[0].max_num;
-    if (currentNumber + quantity > 620) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Capacidad total de la rifa alcanzada (620 tickets vendidos).' });
-    }
-
+    const assignedNumbers = availableNumbers.slice(0, quantity);
+    const actualSellerId = sellerUser?.id || sellerId;
     const createdList = [];
 
     for (let i = 0; i < quantity; i++) {
-      currentNumber += 1;
-      const nextNumber = currentNumber;
+      const nextNumber = assignedNumbers[i];
       const ticketId = `t-${Date.now()}-${nextNumber}-${i}`;
       const codeRandomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
       const ticketCode = `TK-024-${nextNumber}-${codeRandomPart}`;
 
-      // 3. Generar hash criptográfico SHA-256 de autenticidad
-      const hashData = `${nextNumber}|${dni.trim()}|${sellerId}|${Date.now()}-${i}`;
+      // 4. Generar hash criptográfico SHA-256 de autenticidad inmutable
+      const hashData = `${nextNumber}|${dni.trim()}|${actualSellerId}|${Date.now()}-${i}`;
       const verificationHash = crypto.createHash('sha256').update(hashData).digest('hex');
 
-      // 4. Insertar ticket
+      // 5. Insertar ticket en la base de datos
       const insertTicket = await client.query(
         `INSERT INTO tickets (
           id, ticket_number, ticket_code, raffle_id, seller_admin_id,
@@ -120,7 +154,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           nextNumber,
           ticketCode,
           'rf-024',
-          sellerId,
+          actualSellerId,
           buyerName.trim().toUpperCase(),
           phone.trim(),
           dni.trim(),
