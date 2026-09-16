@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, X, Share2, Copy, ArrowRight, Smartphone, User, CreditCard } from 'lucide-react';
+import { Check, X, Share2, Copy, ArrowRight, Smartphone, User, CreditCard, Download } from 'lucide-react';
 import { Ticket } from '../types';
-import { generateQrDataUrl, generateVerificationCode } from '../utils/qrHelper';
+import { generateQrDataUrl, generateVerificationCode, getTicketVerificationUrl } from '../utils/qrHelper';
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +12,7 @@ interface Props {
   raffleCode: string;
   onTicketCreated: (ticket: Ticket) => void;
   onViewVerification?: (ticket: Ticket) => void;
+  registeredByName?: string;
 }
 
 export const TicketRegistrationModal: React.FC<Props> = ({
@@ -22,6 +23,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
   raffleCode,
   onTicketCreated,
   onViewVerification,
+  registeredByName,
 }) => {
   const [buyerName, setBuyerName] = useState('');
   const [dni, setDni] = useState('');
@@ -74,11 +76,11 @@ export const TicketRegistrationModal: React.FC<Props> = ({
       timeFormatted,
       verificationCode: vCode,
       isValid: true,
-      registeredBy: 'Marks',
+      registeredBy: registeredByName || 'Administrador Autorizado',
     };
 
-    // Generate real QR code encoding verification link or code
-    const verifyPayload = `https://rifas.pe/verify?code=${vCode}&ticket=${nextTicketNumber}`;
+    // Generate real, fully valid QR code encoding active verification URL
+    const verifyPayload = getTicketVerificationUrl(vCode, nextTicketNumber);
     const qrData = await generateQrDataUrl(verifyPayload);
 
     setQrUrl(qrData);
@@ -87,8 +89,17 @@ export const TicketRegistrationModal: React.FC<Props> = ({
     setIsSubmitting(false);
   };
 
+  const handleDownloadQr = () => {
+    if (!qrUrl || !createdTicket) return;
+    const a = document.createElement('a');
+    a.href = qrUrl;
+    a.download = `ticket-${createdTicket.formattedNumber.replace('#', '')}-qr.png`;
+    a.click();
+  };
+
   const handleShare = () => {
     if (!createdTicket) return;
+    const verifyUrl = getTicketVerificationUrl(createdTicket.verificationCode, createdTicket.number);
     const text = `🎟️ *RIFAS OFICIAL* - Tu Ticket ha sido emitido con éxito!\n\n` +
       `📌 *Rifa:* ${raffleTitle} (${raffleCode})\n` +
       `🔢 *Número:* ${createdTicket.formattedNumber}\n` +
@@ -96,7 +107,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
       `🪪 *DNI:* ${createdTicket.dni}\n` +
       `🔐 *Código Único:* ${createdTicket.verificationCode}\n` +
       `🕒 *Registro:* ${createdTicket.timeFormatted}\n\n` +
-      `Verifica tu participación en línea de forma transparente e infalsificable. ¡Mucha suerte!`;
+      `🌐 *Verifica tu ticket en línea:* ${verifyUrl}\n\n` +
+      `¡Mucha suerte en el sorteo oficial!`;
 
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
@@ -285,14 +297,26 @@ export const TicketRegistrationModal: React.FC<Props> = ({
 
                 {/* Acciones */}
                 <div className="space-y-2 pt-1">
-                  <button
-                    id="share-ticket-btn"
-                    onClick={handleShare}
-                    className="w-full py-2.5 px-5 bg-[#059669] hover:bg-[#047857] text-white text-xs font-semibold tracking-wide rounded-[10px] transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    <span>{copied ? '¡Copiado al portapapeles!' : 'Compartir ticket (WhatsApp)'}</span>
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      id="share-ticket-btn"
+                      onClick={handleShare}
+                      className="flex-1 py-2.5 px-4 bg-[#059669] hover:bg-[#047857] text-white text-xs font-semibold tracking-wide rounded-xl transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>{copied ? '¡Copiado!' : 'Compartir (WhatsApp)'}</span>
+                    </button>
+
+                    <button
+                      id="download-qr-btn"
+                      onClick={handleDownloadQr}
+                      className="py-2.5 px-3 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="Descargar código QR en PNG"
+                    >
+                      <Download className="w-4 h-4 text-[#059669]" />
+                      <span className="hidden sm:inline">Descargar</span>
+                    </button>
+                  </div>
 
                   {onViewVerification && (
                     <button
@@ -313,7 +337,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                     onClick={resetForm}
                     className="w-full py-2 text-xs font-medium text-[#6B7280] hover:text-[#0F1115] transition-colors cursor-pointer"
                   >
-                    + Registrar otro ticket
+                    Registrar otro ticket
                   </button>
                 </div>
               </motion.div>

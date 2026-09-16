@@ -4,38 +4,49 @@ import {
   Smartphone, 
   PlusCircle, 
   Sparkles, 
-  ShieldCheck 
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
-import { PlatformRole } from '../types';
+import { PlatformRole, AuthUser } from '../types';
 
 interface Props {
   currentView: PlatformRole;
+  currentUser?: AuthUser | null;
   onSelectView: (view: PlatformRole) => void;
   onOpenRegisterTicket: () => void;
+  onLogout?: () => void;
   isDrawMode: boolean;
 }
 
 export const PerspectiveSwitcher: React.FC<Props> = ({
   currentView,
+  currentUser,
   onSelectView,
   onOpenRegisterTicket,
+  onLogout,
   isDrawMode,
 }) => {
+  if (!currentUser) return null;
+
+  const isSuperAdmin = currentUser.role === 'super_admin';
+
   return (
     <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 p-1 bg-[#0F1115]/90 backdrop-blur-md text-white rounded-full border border-white/10 shadow-2xl transition-all duration-200 text-xs ${isDrawMode ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}>
-      <button
-        id="switch-view-superadmin"
-        onClick={() => onSelectView('super_admin')}
-        className={`px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-          currentView === 'super_admin'
-            ? 'bg-white text-[#0F1115] shadow-xs'
-            : 'text-[#9CA3AF] hover:text-white'
-        }`}
-      >
-        <ShieldAlert className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">1. Super Admin</span>
-        <span className="sm:hidden">Super</span>
-      </button>
+      {isSuperAdmin && (
+        <button
+          id="switch-view-superadmin"
+          onClick={() => onSelectView('super_admin')}
+          className={`px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+            currentView === 'super_admin'
+              ? 'bg-white text-[#0F1115] shadow-xs'
+              : 'text-[#9CA3AF] hover:text-white'
+          }`}
+        >
+          <ShieldAlert className="w-3.5 h-3.5 text-[#10B981]" />
+          <span className="hidden sm:inline">1. Super Admin</span>
+          <span className="sm:hidden">Super</span>
+        </button>
+      )}
 
       <button
         id="switch-view-admin"
@@ -88,6 +99,17 @@ export const PerspectiveSwitcher: React.FC<Props> = ({
         <span className="hidden sm:inline">5. Verificación</span>
         <span className="sm:hidden">Verificar</span>
       </button>
+
+      {onLogout && (
+        <button
+          id="switch-view-logout"
+          onClick={onLogout}
+          className="p-1.5 text-[#9CA3AF] hover:text-rose-400 hover:bg-white/10 rounded-full transition-colors cursor-pointer ml-0.5"
+          title="Cerrar sesión"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   );
 };

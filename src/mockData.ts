@@ -1,72 +1,179 @@
-import { Raffle, Ticket, AdminUser, AuditLog } from './types';
+import { Raffle, Ticket, AdminUser, AuditLog, Prize, AuthUser } from './types';
+
+export const INITIAL_PRIZES: Prize[] = [
+  // Gran Rifa 2026 (#024) - Los 7 Premios Oficiales Únicos
+  {
+    id: 'prz-1',
+    raffleId: 'rf-024',
+    order: 1,
+    name: 'Microondas LG NeoChef 25L',
+    description: 'Horno microondas LG NeoChef Smart Inverter 25L con recubrimiento EasyClean antibacterial.',
+    category: 'Electrohogar',
+    link: 'https://www.falabella.com.pe/falabella-pe/product/15768826/horno-microondas-ms2536gis-25l-con-easyclean-lg/15768826',
+    isDrawn: false,
+  },
+  {
+    id: 'prz-2',
+    raffleId: 'rf-024',
+    order: 2,
+    name: '1 Tattoo Grande (Black Monkey Tattoo)',
+    description: 'Sesión completa de tatuaje personalizado de gran formato realizado por el prestigioso estudio Black Monkey Tattoo.',
+    category: 'Arte & Tatuaje',
+    link: 'https://www.instagram.com/black_monkeytattoo?stkn=ZDNlZDc0MzlxNW==',
+    isDrawn: false,
+  },
+  {
+    id: 'prz-3',
+    raffleId: 'rf-024',
+    order: 3,
+    name: 'Juego de Tarima de Madera',
+    description: 'Juego de tarima de madera selecta con estructura reforzada y respaldar español.',
+    category: 'Hogar & Muebles',
+    link: 'https://www.google.com/search?q=TARIMA+ESPA%C3%91OLA+CAMA',
+    isDrawn: false,
+  },
+  {
+    id: 'prz-4',
+    raffleId: 'rf-024',
+    order: 4,
+    name: 'Cena Gourmet en Pareja Fontana Lounge',
+    description: 'Cena gourmet exclusiva para 2 personas en Fontana Lounge con cócteles y postres de cortesía.',
+    category: 'Gastronomía',
+    link: 'https://www.facebook.com/fontanalounge/?locale=es_LA',
+    isDrawn: false,
+  },
+  {
+    id: 'prz-5',
+    raffleId: 'rf-024',
+    order: 5,
+    name: 'Gift Card Aruma Cosmética & Belleza',
+    description: 'Tarjeta de regalo Aruma para canjear en cosmética, maquillaje y cuidado personal.',
+    category: 'Belleza',
+    link: 'https://www.instagram.com/aruma.pe?stkn=ZDNlZDc0MzlxNw==',
+    isDrawn: false,
+  },
+  {
+    id: 'prz-6',
+    raffleId: 'rf-024',
+    order: 6,
+    name: '3 Tattoos Pequeños (Black Monkey Tattoo)',
+    description: 'Pack de 3 tatuajes de línea fina, lettering o diseño minimalista en Black Monkey Tattoo.',
+    category: 'Arte & Tatuaje',
+    link: 'https://www.instagram.com/black_monkeytattoo?stkn=ZDNlZDc0MzlxNW==',
+    isDrawn: false,
+  },
+  {
+    id: 'prz-7',
+    raffleId: 'rf-024',
+    order: 7,
+    name: '3 Cajas de Postres Artesanales CAELA',
+    description: 'Trilogía dulce artesanal con los postres más aclamados de CAELA Repostería.',
+    category: 'Repostería',
+    link: 'https://www.instagram.com/caela_hyo?stkn=ZDNlZDc0MzlxNw==',
+    isDrawn: false,
+  },
+];
 
 export const INITIAL_RAFFLES: Raffle[] = [
   {
     id: 'rf-024',
     code: '#024',
     title: 'Gran Rifa 2026',
-    description: 'Sorteo benéfico anual de tecnología y premios mayores en efectivo.',
+    description: 'Sorteo oficial con 7 grandes premios. Cada administrador cuenta con una cuota asignada de 20 tickets.',
     status: 'activa',
     ticketPrice: 10,
-    totalTickets: 2000,
-    soldTickets: 1248,
+    totalTickets: 620,
+    soldTickets: 420,
     drawDate: '01/10/2026 20:00:00',
     currency: 'S/',
-    assignedAdmin: 'Marks (Admin Principal)',
+    assignedAdmin: 'Dayana Ramos (Coordinadora)',
   },
+];
+
+// Helper to create initials
+const getInitials = (fullName: string): string => {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+// Raw list of 31 admins provided by user
+const RAW_ADMIN_DATA = [
+  { n: 1, name: 'HANSSEL JHARETH LLANCARI MUJE', dni: '74765137', email: 'hanssel.llancari@rifas.pe' },
+  { n: 2, name: 'JHEYSON RYAM JORGE VASQUEZ', dni: '70905188', email: 'jheyson.jorge@rifas.pe' },
+  { n: 3, name: 'LYAM SIDNNEY RENGIFO GOZAR', dni: '72795283', email: 'lyam.rengifo@rifas.pe' },
+  { n: 4, name: 'FREDDY ALONSO JESUS RAMOS GUZMAN', dni: '71745804', email: 'freddy.ramos@rifas.pe' },
+  { n: 5, name: 'KEYRA CLAUDIA RICAPA CONDOR', dni: '72741502', email: 'keyra.ricapa@rifas.pe' },
+  { n: 6, name: 'JHON BRAYAN FELIX YAPIAS', dni: '74602585', email: 'jhon.felix@rifas.pe' },
+  { n: 7, name: 'DANTUN MIGUEL NUNEZ ROMERO', dni: '71694983', email: 'dantun.nunez@rifas.pe' },
+  { n: 8, name: 'YULIANA ESTEFANY GARAGATI SALAZAR', dni: '76564148', email: 'yuliana.garagati@rifas.pe' },
+  { n: 9, name: 'KLUIVERT SEVERO BRICENO BARZOLA', dni: '74898956', email: 'kluivert.briceno@rifas.pe' },
+  { n: 10, name: 'ALEJANDRA ANTONELLA GALINDO GASTELU', dni: '75510293', email: 'alejandra.galindo@rifas.pe' },
+  { n: 11, name: 'LUIS GUILLERMO PARRA TICZE', dni: '72809187', email: 'luis.parra@rifas.pe' },
+  { n: 12, name: 'SHIRLEY MISLETH MEZA CELIS', dni: '75701962', email: 'shirley.meza@rifas.pe' },
+  { n: 13, name: 'RISTOL CAMILO SANCHEZ RAMOS', dni: '73868636', email: 'ristol.sanchez@rifas.pe' },
+  { n: 14, name: 'JOSE BERNARDO VALENCIA PEREZ', dni: '73997851', email: 'jose.valencia@rifas.pe' },
+  { n: 15, name: 'ALEXANDER ZARATE CARIRE', dni: '70240574', email: 'alexander.zarate@rifas.pe' },
+  { n: 16, name: 'ESTEFANY DARIA SEDANO HURTADO', dni: '75315104', email: 'estefany.sedano@rifas.pe' },
+  { n: 17, name: 'JAYRO FREDDY ORIHUELA CHAVEZ', dni: '74960683', email: 'jayro.orihuela@rifas.pe' },
+  { n: 18, name: 'JAIME BRANDON FLORES LOZANO', dni: '77801287', email: 'jaime.flores@rifas.pe' },
+  { n: 19, name: 'EVELIN ROMERO ROMANI', dni: '60906074', email: 'evelin.romero@rifas.pe' },
+  { n: 20, name: 'MEDALY ANGELINE RAMIREZ AYBAR', dni: '71780194', email: 'medaly.ramirez@rifas.pe' },
+  { n: 21, name: 'KEVIN FRANK AQUINO MARTINEZ', dni: '77801287', email: 'kevin.aquino@rifas.pe' },
+  { n: 22, name: 'JENIFER ABIGAIL APOLINARIO LAUREANO', dni: '75075018', email: 'jenifer.apolinario@rifas.pe' },
+  { n: 23, name: 'ROSA VALERIA NAUPARI SALVADOR', dni: '72095575', email: 'rosa.naupari@rifas.pe' },
+  { n: 24, name: 'ELISANGHELA MERCEDES ROBLADILLO BELTRAN', dni: '71247028', email: 'elisanghela.robladillo@rifas.pe' },
+  { n: 25, name: 'BEYONCE ELIZABETH HUAMAN TORRES', dni: '77529113', email: 'beyonce.huaman@rifas.pe' },
+  { n: 26, name: 'NOHELY GIANNELA ALIAGA HUARACA', dni: '70916278', email: 'nohely.aliaga@rifas.pe' },
+  { n: 27, name: 'JASMIN NICOL MORALES SINCHITULLO', dni: '72740540', email: 'jasmin.morales@rifas.pe' },
+  { n: 28, name: 'MARICIELO KATHERINE LLACZA ROJA', dni: '74395059', email: 'maricielo.llacza@rifas.pe' },
+  { n: 29, name: 'SURIMANA QUINTO MENDOZA', dni: '73523144', email: 'surimana.quinto@rifas.pe' },
+  { n: 30, name: 'DANITZA LESLY MELENDREZ HERRERA', dni: '75020702', email: 'danitza.melendrez@rifas.pe' },
+  { n: 31, name: 'JHOVANNY BRYANJ SANABRIA BERROCAL', dni: '70401427', email: 'jhovanny.sanabria@rifas.pe' },
+];
+
+const ADMIN_SALES = [
+  20, 18, 20, 15, 17, 20, 14, 16, 19, 13, 
+  20, 12, 18, 15, 11, 20, 16, 17, 14, 19, 
+  20, 15, 18, 12, 16, 14, 20, 13, 17, 15, 18
+];
+
+export const INITIAL_ADMINS: AdminUser[] = RAW_ADMIN_DATA.map((admin, index) => ({
+  id: `adm-${admin.n}`,
+  name: admin.name,
+  dni: admin.dni,
+  email: admin.email,
+  password: 'password123',
+  assignedRafflesCount: 1,
+  totalSold: ADMIN_SALES[index] ?? 15, // Venta individual de tickets hacia su meta de 20
+  assignedQuota: 20, // Cada admin tiene 20 tickets como meta requerida
+  status: 'activo' as const,
+  avatarInitials: getInitials(admin.name),
+  assignedRaffleId: 'rf-024',
+}));
+
+export const DEMO_AUTH_USERS: (AuthUser & { password: string })[] = [
   {
-    id: 'rf-023',
-    code: '#023',
-    title: 'Rifa Pro-Fondos Salud y Bienestar',
-    description: 'Campaña solidaria pro fondos de salud y apoyo integral.',
-    status: 'cerrada',
-    ticketPrice: 15,
-    totalTickets: 1000,
-    soldTickets: 850,
-    drawDate: '28/08/2026 19:30:00',
-    currency: 'S/',
-    assignedAdmin: 'Valeria Quispe',
-    winner: {
-      ticketNumber: '#512',
-      winnerName: 'Rosa Meléndez',
-      dni: '42918231',
-      drawTimestamp: '28/08/2026 19:34:12',
-      drawId: 'DRAW-023-99V1',
-    },
+    id: 'user-superadmin',
+    name: 'Marks',
+    email: 'marksdelmissolano@gmail.com',
+    dni: '00000001',
+    password: 'password123',
+    role: 'super_admin',
+    assignedQuota: 100,
+    avatarInitials: 'M',
   },
-  {
-    id: 'rf-022',
-    code: '#022',
-    title: 'Sorteo Aniversario Institucional',
-    description: 'Sorteo oficial conmemorativo con 3 premios estelares.',
-    status: 'sorteo',
-    ticketPrice: 20,
-    totalTickets: 2500,
-    soldTickets: 2100,
-    drawDate: '14/09/2026 20:00:00',
-    currency: 'S/',
-    assignedAdmin: 'Carlos Méndez',
-  },
-  {
-    id: 'rf-021',
-    code: '#021',
-    title: 'Rifa Moto Eléctrica EcoDrive',
-    description: 'Sorteo oficial de vehículo eléctrico 0km y equipamiento.',
-    status: 'cerrada',
-    ticketPrice: 25,
-    totalTickets: 3000,
-    soldTickets: 3000,
-    drawDate: '15/07/2026 21:00:00',
-    currency: 'S/',
-    assignedAdmin: 'Marks (Admin Principal)',
-    winner: {
-      ticketNumber: '#1844',
-      winnerName: 'Esteban Salazar',
-      dni: '70281920',
-      drawTimestamp: '15/07/2026 21:05:22',
-      drawId: 'DRAW-021-11X9',
-    },
-  },
+  ...RAW_ADMIN_DATA.map((admin) => ({
+    id: `user-admin-${admin.n}`,
+    name: admin.name,
+    dni: admin.dni,
+    email: admin.email,
+    password: 'password123',
+    role: 'admin' as const,
+    assignedRaffleId: 'rf-024',
+    assignedQuota: 20, // Cuota fija 20 tickets
+    avatarInitials: getInitials(admin.name),
+  })),
 ];
 
 export const INITIAL_TICKETS: Ticket[] = [
@@ -82,7 +189,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '14:32',
     verificationCode: 'RF-82K7X91',
     isValid: true,
-    registeredBy: 'Marks',
+    registeredBy: 'HANSSEL JHARETH LLANCARI MUJE',
   },
   {
     id: 't-1247',
@@ -96,7 +203,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '14:29',
     verificationCode: 'RF-71M9W42',
     isValid: true,
-    registeredBy: 'Marks',
+    registeredBy: 'JHEYSON RYAM JORGE VASQUEZ',
   },
   {
     id: 't-1246',
@@ -110,7 +217,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '14:27',
     verificationCode: 'RF-59A3Q18',
     isValid: true,
-    registeredBy: 'Marks',
+    registeredBy: 'LYAM SIDNNEY RENGIFO GOZAR',
   },
   {
     id: 't-1245',
@@ -124,7 +231,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '14:15',
     verificationCode: 'RF-44N8K20',
     isValid: true,
-    registeredBy: 'Marks',
+    registeredBy: 'Dayana Isabel Ramos Rivera',
   },
   {
     id: 't-1244',
@@ -138,7 +245,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '13:58',
     verificationCode: 'RF-90L2P77',
     isValid: true,
-    registeredBy: 'Valeria Quispe',
+    registeredBy: 'FREDDY ALONSO JESUS RAMOS GUZMAN',
   },
   {
     id: 't-038',
@@ -152,7 +259,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '11:20',
     verificationCode: 'RF-038KP99',
     isValid: true,
-    registeredBy: 'Marks',
+    registeredBy: 'KEYRA CLAUDIA RICAPA CONDOR',
   },
   {
     id: 't-001',
@@ -166,71 +273,41 @@ export const INITIAL_TICKETS: Ticket[] = [
     timeFormatted: '09:00',
     verificationCode: 'RF-82K7X91',
     isValid: true,
-    registeredBy: 'Marks',
-  },
-];
-
-export const INITIAL_ADMINS: AdminUser[] = [
-  {
-    id: 'adm-1',
-    name: 'Marks',
-    email: 'marksdelmissolano@gmail.com',
-    assignedRafflesCount: 14,
-    totalSold: 12840,
-    status: 'activo',
-    avatarInitials: 'M',
-  },
-  {
-    id: 'adm-2',
-    name: 'Valeria Quispe',
-    email: 'valeria.q@rifas.pe',
-    assignedRafflesCount: 6,
-    totalSold: 3950,
-    status: 'activo',
-    avatarInitials: 'VQ',
-  },
-  {
-    id: 'adm-3',
-    name: 'Carlos Méndez',
-    email: 'carlos.m@rifas.pe',
-    assignedRafflesCount: 4,
-    totalSold: 1630,
-    status: 'activo',
-    avatarInitials: 'CM',
+    registeredBy: 'Jhordan Kevin Espinoza Garcia',
   },
 ];
 
 export const INITIAL_AUDIT: AuditLog[] = [
   {
     id: 'aud-1',
+    timestamp: '15 Sep 2026 · 12:10:00',
+    action: 'Asignación de Cuota',
+    user: 'Marks (Superadmin)',
+    raffle: 'Rifa #024',
+    detail: 'Se asignó meta obligatoria de 20 tickets a cada uno de los 31 administradores registrados.',
+  },
+  {
+    id: 'aud-2',
+    timestamp: '15 Sep 2026 · 12:05:00',
+    action: 'Actualización de Premios',
+    user: 'Marks (Superadmin)',
+    raffle: 'Rifa #024',
+    detail: 'Se cargaron los 7 premios oficiales (1° Microondas hasta 7° Postres CAELA) con enlaces verificados.',
+  },
+  {
+    id: 'aud-3',
     timestamp: '14 Sep 2026 · 14:32:02',
     action: 'Emisión de Ticket',
-    user: 'Marks',
+    user: 'HANSSEL LLANCARI',
     raffle: 'Rifa #024',
     detail: 'Ticket #1248 emitido a Juan Pérez (DNI 12345678). Hash validado.',
   },
   {
-    id: 'aud-2',
-    timestamp: '14 Sep 2026 · 14:29:15',
-    action: 'Emisión de Ticket',
-    user: 'Marks',
-    raffle: 'Rifa #024',
-    detail: 'Ticket #1247 emitido a María López (DNI 87654321). Hash validado.',
-  },
-  {
-    id: 'aud-3',
+    id: 'aud-4',
     timestamp: '14 Sep 2026 · 12:00:00',
     action: 'Cambio de Estado',
     user: 'Sistema',
     raffle: 'Rifa #022',
-    detail: 'Estado actualizado a ● Sorteo (umbral 80% alcanzado).',
-  },
-  {
-    id: 'aud-4',
-    timestamp: '13 Sep 2026 · 18:45:11',
-    action: 'Cierre de Rifa',
-    user: 'Marks',
-    raffle: 'Rifa #023',
-    detail: 'Rifa #023 cerrada oficialmente para auditoría contable.',
+    detail: 'Estado actualizado a ● Sorteo.',
   },
 ];
