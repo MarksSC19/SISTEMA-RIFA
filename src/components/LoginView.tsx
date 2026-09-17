@@ -108,6 +108,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
                 <input
                   id="login-dni-input"
                   type="text"
+                  inputMode="numeric"
                   required
                   maxLength={8}
                   pattern="\d{8}"
@@ -126,7 +127,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
                 Contraseña
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="login-password-input"
                   type={showPassword ? 'text' : 'password'}
@@ -139,11 +140,12 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
                 />
                 <button
                   type="button"
+                  tabIndex={-1}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#0F1115] p-1 cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#0F1115] p-1 rounded-md transition-colors cursor-pointer"
                   title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>

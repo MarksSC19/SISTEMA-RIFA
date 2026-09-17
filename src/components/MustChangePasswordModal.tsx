@@ -21,6 +21,7 @@ export const MustChangePasswordModal: React.FC<Props> = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -118,14 +119,15 @@ export const MustChangePasswordModal: React.FC<Props> = ({
                 Contraseña Temporal Actual (Número de DNI)
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
+                  inputMode="numeric"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Ingrese su DNI actual"
                   required
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:border-[#0F1115]"
+                  className="w-full pl-9 pr-3 py-2.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:border-[#0F1115] transition-all"
                 />
               </div>
               <span className="text-[10px] text-gray-400 mt-0.5 block">
@@ -139,19 +141,22 @@ export const MustChangePasswordModal: React.FC<Props> = ({
                 Nueva Contraseña Personal (mínimo 6 caracteres)
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type={showPass ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full pl-9 pr-10 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F1115]"
+                  autoComplete="new-password"
+                  className="w-full pl-9 pr-10 py-2.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F1115] transition-all"
                 />
                 <button
                   type="button"
+                  tabIndex={-1}
                   onClick={() => setShowPass(!showPass)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 p-1 rounded-md transition-colors cursor-pointer"
+                  title={showPass ? 'Ocultar contraseña' : 'Ver contraseña'}
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -164,15 +169,25 @@ export const MustChangePasswordModal: React.FC<Props> = ({
                 Confirmar Nueva Contraseña
               </label>
               <div className="relative">
-                <Check className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Check className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  type={showPass ? 'text' : 'password'}
+                  type={showConfirmPass ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F1115]"
+                  autoComplete="new-password"
+                  className="w-full pl-9 pr-10 py-2.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F1115] transition-all"
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowConfirmPass(!showConfirmPass)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 p-1 rounded-md transition-colors cursor-pointer"
+                  title={showConfirmPass ? 'Ocultar contraseña' : 'Ver contraseña'}
+                >
+                  {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 

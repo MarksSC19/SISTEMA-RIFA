@@ -448,6 +448,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                       <input
                         id="buyer-dni-input"
                         type="text"
+                        inputMode="numeric"
                         maxLength={8}
                         placeholder="8 dígitos"
                         value={dni}
@@ -463,6 +464,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                       <input
                         id="buyer-phone-input"
                         type="tel"
+                        inputMode="tel"
                         maxLength={9}
                         placeholder="9 dígitos"
                         value={phone}

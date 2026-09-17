@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { X, Users, Mail, Lock, Check, Shield, Tag, Target } from 'lucide-react';
+import { X, Users, Mail, Lock, Check, Shield, Tag, Target, Eye, EyeOff } from 'lucide-react';
 import { AdminUser, Raffle } from '../types';
 
 interface Props {
@@ -22,6 +22,7 @@ export const AdminUserModal: React.FC<Props> = ({
   const [dni, setDni] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [assignedRaffleId, setAssignedRaffleId] = useState('');
   const [assignedQuota, setAssignedQuota] = useState('20');
   const [status, setStatus] = useState<'activo' | 'inactivo'>('activo');
@@ -157,10 +158,11 @@ export const AdminUserModal: React.FC<Props> = ({
               </label>
               <input
                 type="text"
+                inputMode="numeric"
                 value={dni}
-                onChange={(e) => setDni(e.target.value)}
+                onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
                 placeholder="8 dígitos"
-                maxLength={12}
+                maxLength={8}
                 className="w-full px-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] font-mono focus:outline-none focus:border-[#0F1115]"
               />
             </div>
@@ -169,10 +171,10 @@ export const AdminUserModal: React.FC<Props> = ({
           {/* Correo */}
           <div>
             <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5">
-              Correo Electrónico (Para Login) *
+              Correo Electrónico *
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+              <Mail className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="email"
                 value={email}
@@ -189,14 +191,24 @@ export const AdminUserModal: React.FC<Props> = ({
               Contraseña de Acceso *
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type="text"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={adminToEdit ? 'Dejar en blanco para mantener la actual' : '••••••••'}
-                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] focus:outline-none focus:border-[#0F1115]"
+                autoComplete="new-password"
+                className="w-full pl-9 pr-10 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] focus:outline-none focus:border-[#0F1115] transition-all"
               />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#0F1115] p-1 rounded-md transition-colors cursor-pointer"
+                title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
             <p className="text-[10px] text-[#6B7280] mt-1">
               {adminToEdit ? 'Modifique este campo para actualizar su contraseña.' : 'Contraseña sugerida: password123'}

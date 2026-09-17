@@ -1,6 +1,28 @@
 @import "tailwindcss";
 
 @layer base {
+  /* Eliminar botón nativo de visualización de contraseña de Microsoft Edge / Windows */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear,
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* Ocultar iconos nativos invasivos de autocompletado en navegadores basados en Chromium */
+  input::-webkit-contacts-auto-fill-button,
+  input::-webkit-credentials-auto-fill-button {
+    visibility: hidden;
+    display: none !important;
+    pointer-events: none;
+    height: 0;
+    width: 0;
+    margin: 0;
+  }
+
   /* Evitar auto-zoom forzado de Safari iOS cuando el usuario toca un campo */
   @media screen and (max-width: 768px) {
     input, select, textarea {
@@ -18,3 +40,4 @@
     overscroll-behavior-y: none;
   }
 }
+
