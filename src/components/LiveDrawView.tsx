@@ -120,14 +120,14 @@ export const LiveDrawView: React.FC<Props> = ({
     }
   };
 
-  // Lista de IDs de tickets que ya han ganado algún premio en esta rifa para no repetir
+  // Lista de IDs de tickets que ya han ganado OTRO premio en esta rifa para no repetir
   const wonTicketIds = new Set(
     rafflePrizes
-      .filter(p => p.isDrawn && (p.winnerTicketId || (p as any).winnerTicket?.ticketNumber))
+      .filter(p => p.isDrawn && p.id !== activePrize?.id && (p.winnerTicketId || (p as any).winnerTicket?.ticketNumber))
       .map(p => p.winnerTicketId || (p as any).winnerTicket?.ticketNumber)
   );
 
-  // Tickets elegibles: únicamente boletos válidos y vendidos que aún no ganaron
+  // Tickets elegibles: únicamente boletos válidos y vendidos que aún no ganaron otro premio
   const eligibleTickets = tickets.filter(t => t.isValid !== false && !wonTicketIds.has(t.id) && !wonTicketIds.has(t.formattedNumber));
 
   const startDraw = async () => {
@@ -138,11 +138,11 @@ export const LiveDrawView: React.FC<Props> = ({
     setDrawState('spinning');
     setWinnerTicket(null);
 
-    // 1. Obtener ganador oficial desde PostgreSQL con CSPRNG
+    // 1. Obtener ganador oficial desde PostgreSQL con CSPRNG (allowRedraw: true para permitir re-sorteo)
     let targetCandidate: Ticket;
     try {
       if (activePrize) {
-        const res = await api.executeDraw(activePrize.id);
+        const res = await api.executeDraw(activePrize.id, true);
         if (res?.winner) {
           const found = tickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number);
           targetCandidate = found || {
@@ -184,12 +184,12 @@ export const LiveDrawView: React.FC<Props> = ({
     const spinStep = () => {
       stepCount++;
 
-      // Durante el giro, desfilan única y exclusivamente los números de tickets vendidos reales
+      // Durante el giro, desfilan única y exclusivamente los números de tickets vendidos reales (4 dígitos)
       const randomCandidate = eligibleTickets.length > 0 
         ? eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)]
         : null;
       const randomNum = randomCandidate ? randomCandidate.number : (targetCandidate?.number || 1);
-      const formattedRandom = String(randomNum).padStart(3, '0').split('').join(' ');
+      const formattedRandom = String(randomNum).padStart(4, '0').split('').join(' ');
       setCurrentDisplayNumber(formattedRandom);
 
       if (soundEnabled) {
@@ -206,7 +206,7 @@ export const LiveDrawView: React.FC<Props> = ({
         animationTimerRef.current = setTimeout(spinStep, speed);
       } else {
         // Final stop on target winner!
-        const finalPadded = String(targetCandidate.number).padStart(3, '0').split('').join(' ');
+        const finalPadded = String(targetCandidate.number).padStart(4, '0').split('').join(' ');
         setCurrentDisplayNumber(finalPadded);
         setWinnerTicket(targetCandidate);
         setDrawState('winner');
@@ -260,11 +260,11 @@ export const LiveDrawView: React.FC<Props> = ({
     return `${prize.order}° Lugar: ${cleanName}`;
   };
 
-  // Digits formatted for 3-drum tumbler cards
-  const currentDigits = (currentDisplayNumber || '0 0 0')
+  // Digits formatted for 4-drum tumbler cards (matching ticket formats #0001 to #0600)
+  const currentDigits = (currentDisplayNumber || '0 0 0 0')
     .replace(/\s+/g, '')
-    .padStart(3, '0')
-    .slice(-3)
+    .padStart(4, '0')
+    .slice(-4)
     .split('');
 
   return (
@@ -463,11 +463,11 @@ export const LiveDrawView: React.FC<Props> = ({
                 {/* Luminous Floor Podium Halo directly beneath the digit cards */}
                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-[600px] h-16 bg-emerald-500/30 rounded-full blur-2xl pointer-events-none" />
 
-                <div className="flex items-center justify-center gap-3 sm:gap-6 relative z-10">
+                <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-5 relative z-10">
                   {currentDigits.map((digit, idx) => (
                     <div
                       key={idx}
-                      className={`relative w-20 sm:w-28 md:w-36 h-28 sm:h-36 md:h-44 rounded-2xl md:rounded-3xl flex items-center justify-center bg-gradient-to-b from-[#1C2230] via-[#121622] to-[#0A0D14] border-2 ${
+                      className={`relative w-16 sm:w-24 md:w-32 h-24 sm:h-32 md:h-40 rounded-2xl md:rounded-3xl flex items-center justify-center bg-gradient-to-b from-[#1C2230] via-[#121622] to-[#0A0D14] border-2 ${
                         drawState === 'spinning'
                           ? 'border-emerald-400 shadow-[0_0_50px_rgba(16,185,129,0.5)] scale-105'
                           : 'border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.2)]'
@@ -479,7 +479,7 @@ export const LiveDrawView: React.FC<Props> = ({
                       <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-black/70 border-b border-white/10 pointer-events-none" />
                       
                       {/* Numerals with high-impact glow */}
-                      <span className={`font-mono text-5xl sm:text-6xl md:text-8xl font-black ${
+                      <span className={`font-mono text-4xl sm:text-5xl md:text-7xl font-black ${
                         drawState === 'spinning'
                           ? 'text-emerald-300 drop-shadow-[0_0_40px_rgba(16,185,129,0.85)]'
                           : 'text-white drop-shadow-[0_6px_18px_rgba(0,0,0,0.9)]'

@@ -742,11 +742,15 @@ export default function App() {
       console.warn('Reset local de premios:', err);
     }
     setPrizes(prev => prev.map(p => {
-      if (p.raffleId === raffleId) {
+      if (p.raffleId === raffleId || raffleId === 'rf-024') {
         return {
           ...p,
           isDrawn: false,
           winnerTicket: undefined,
+          winnerTicketId: undefined,
+          winnerName: undefined,
+          winnerPhone: undefined,
+          drawnAt: undefined,
         };
       }
       return p;

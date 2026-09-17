@@ -9,7 +9,7 @@ const router = Router();
 router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   const client = await db.getClient();
   try {
-    const { prizeId } = req.body;
+    const { prizeId, allowRedraw } = req.body;
     if (!prizeId) {
       return res.status(400).json({ error: 'Debe especificar el prizeId a sortear.' });
     }
@@ -24,14 +24,14 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
     }
 
     const prize = prizeRes.rows[0];
-    if (prize.winner_ticket_id) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        error: `Este premio ya fue sorteado y adjudicado a ${prize.winner_name}.`,
-      });
+    const isReDraw = Boolean(prize.winner_ticket_id);
+
+    if (prize.winner_ticket_id && !allowRedraw) {
+      // Si ya tiene ganador pero se invoca el sorteo directo, se asume re-sorteo administrativo
+      console.log(`[Draw] Re-sorteando premio ${prize.title} (anterior ganador: ${prize.winner_name})`);
     }
 
-    // 2. Obtener tickets válidos y vendidos que aún no hayan ganado otro premio
+    // 2. Obtener tickets válidos y vendidos que aún no hayan ganado otro premio diferente a este
     const candidatesRes = await client.query(`
       SELECT 
         t.id,
@@ -47,8 +47,8 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
       LEFT JOIN users u ON u.id = t.seller_admin_id
       WHERE t.raffle_id = 'rf-024' 
         AND t.status = 'valid'
-        AND t.id NOT IN (SELECT winner_ticket_id FROM prizes WHERE winner_ticket_id IS NOT NULL)
-    `);
+        AND t.id NOT IN (SELECT winner_ticket_id FROM prizes WHERE winner_ticket_id IS NOT NULL AND id != $1)
+    `, [prizeId]);
 
     const candidates = candidatesRes.rows;
     if (candidates.length === 0) {
@@ -74,12 +74,13 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
 
     // 5. Registrar en auditoría
     const auditId = `aud-${Date.now()}`;
-    const auditHash = crypto.createHash('sha256').update(`DRAW_${prizeId}_${winningTicket.id}`).digest('hex');
+    const auditHash = crypto.createHash('sha256').update(`DRAW_${prizeId}_${winningTicket.id}_${Date.now()}`).digest('hex');
     await client.query(
       `INSERT INTO audit_logs (id, action, performed_by, target, details, hash_signature, previous_hash)
-       VALUES ($1, 'SORTEO_OFICIAL_CSPRNG', $2, $3, $4, $5, 'GENESIS')`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'GENESIS')`,
       [
         auditId,
+        isReDraw ? 'RE_SORTEO_OFICIAL_CSPRNG' : 'SORTEO_OFICIAL_CSPRNG',
         req.user?.name || 'SUPERADMIN',
         prize.title,
         JSON.stringify({
@@ -88,6 +89,7 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
           winner: winningTicket.buyerName,
           totalEligible: candidates.length,
           drawnAt: drawnAt.toISOString(),
+          isReDraw,
         }),
         auditHash,
       ]

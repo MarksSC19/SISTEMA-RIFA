@@ -186,11 +186,11 @@ export const api = {
   },
 
   // --- SORTEO CRIPTOGRÁFICO EN VIVO (CSPRNG) ---
-  async executeDraw(prizeId: string) {
+  async executeDraw(prizeId: string, allowRedraw: boolean = false) {
     const res = await fetch(`${API_BASE}/draw/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify({ prizeId }),
+      body: JSON.stringify({ prizeId, allowRedraw }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al ejecutar sorteo');
