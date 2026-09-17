@@ -566,20 +566,34 @@ export default function App() {
     handleTicketsCreated([newTicket]);
   };
 
-  const handleUpdateTicket = (updatedTicket: Ticket) => {
-    setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+  const handleUpdateTicket = async (updatedTicket: Ticket) => {
+    try {
+      // 1. Persistir directamente en base de datos PostgreSQL
+      await api.updateTicket(updatedTicket.id, {
+        buyerName: updatedTicket.buyerName,
+        dni: updatedTicket.dni,
+        phone: updatedTicket.phone,
+      });
 
-    const now = new Date();
-    const dateStr = `${String(now.getDate()).padStart(2, '0')} Sep ${now.getFullYear()} · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const newLog: AuditLog = {
-      id: `aud-${Date.now()}`,
-      timestamp: dateStr,
-      action: 'Actualización de Ticket',
-      user: currentUser?.name || 'Marks',
-      raffle: activeRaffle.code,
-      detail: `Ticket ${updatedTicket.formattedNumber} actualizado: ${updatedTicket.buyerName} (DNI ${updatedTicket.dni}).`,
-    };
-    setAuditLogs(prev => [newLog, ...prev]);
+      // 2. Actualizar estado reactivo en memoria
+      setTickets(prev => prev.map(t => (t.id === updatedTicket.id || t.verificationCode === updatedTicket.verificationCode) ? updatedTicket : t));
+
+      // 3. Registrar auditoría local
+      const now = new Date();
+      const dateStr = `${String(now.getDate()).padStart(2, '0')} Sep ${now.getFullYear()} · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const newLog: AuditLog = {
+        id: `aud-${Date.now()}`,
+        timestamp: dateStr,
+        action: 'Actualización de Ticket',
+        user: currentUser?.name || 'Administrador',
+        raffle: activeRaffle.code,
+        detail: `Ticket ${updatedTicket.formattedNumber} actualizado: ${updatedTicket.buyerName} (DNI ${updatedTicket.dni}).`,
+      };
+      setAuditLogs(prev => [newLog, ...prev]);
+    } catch (err: any) {
+      console.error('Error al actualizar ticket en BD:', err);
+      throw err;
+    }
   };
 
   const handleDeleteTicket = (ticketId: string) => {
@@ -788,6 +802,7 @@ export default function App() {
               // safe fallback
             }
           }}
+          onUpdateTicket={handleUpdateTicket}
           onLogout={handleLogout}
         />
       )}

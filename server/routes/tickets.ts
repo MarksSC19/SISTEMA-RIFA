@@ -228,19 +228,74 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { buyerName, dni, phone } = req.body;
 
+    if (!buyerName || !dni) {
+      return res.status(400).json({ error: 'El nombre del comprador y el DNI son obligatorios.' });
+    }
+
+    const cleanName = buyerName.trim().toUpperCase();
+    const cleanDni = dni.trim();
+    const cleanPhone = phone ? phone.trim() : '';
+
+    let query = `
+      UPDATE tickets 
+      SET buyer_name = $1, 
+          buyer_dni = $2, 
+          buyer_phone = $3
+      WHERE (id = $4 OR ticket_code = $4 OR ('#' || LPAD(ticket_number::text, 4, '0')) = $4 OR ticket_number::text = $4)
+    `;
+    const params: any[] = [cleanName, cleanDni, cleanPhone, id];
+
+    if (req.user?.role !== 'super_admin') {
+      params.push(req.user?.id);
+      query += ` AND seller_admin_id = $${params.length}`;
+    }
+
+    query += ` RETURNING 
+        id, 
+        ticket_number as number, 
+        ('#' || LPAD(ticket_number::text, 4, '0')) as "formattedNumber", 
+        ticket_code as "verificationCode", 
+        raffle_id as "raffleId", 
+        buyer_name as "buyerName", 
+        buyer_dni as dni, 
+        buyer_phone as phone, 
+        payment_method as "paymentMethod", 
+        price_paid as price, 
+        status, 
+        sold_at as timestamp, 
+        verification_hash as "verificationHash"`;
+
+    const result = await db.query(query, params);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Boleto no encontrado o no tiene permisos para modificarlo.' });
+    }
+
+    const updated = result.rows[0];
+
+    // Registrar en auditoría de PostgreSQL
+    const auditId = `aud-${Date.now()}`;
+    const auditHash = crypto.createHash('sha256').update(`UPDATE_TICKET_${id}_${cleanDni}`).digest('hex');
     await db.query(
-      `UPDATE tickets 
-       SET buyer_name = COALESCE($1, buyer_name), 
-           buyer_dni = COALESCE($2, buyer_dni), 
-           buyer_phone = COALESCE($3, buyer_phone)
-       WHERE id = $4`,
-      [buyerName ? buyerName.trim().toUpperCase() : null, dni ? dni.trim() : null, phone ? phone.trim() : null, id]
+      `INSERT INTO audit_logs (id, action, performed_by, target, details, hash_signature, previous_hash)
+       VALUES ($1, 'ACTUALIZAR_TICKET', $2, $3, $4, $5, 'GENESIS')`,
+      [
+        auditId,
+        req.user?.name || 'ADMIN',
+        `Ticket ${updated.formattedNumber}`,
+        JSON.stringify({ buyerName: cleanName, dni: cleanDni, phone: cleanPhone }),
+        auditHash,
+      ]
     );
 
-    res.json({ success: true, message: 'Ticket actualizado exitosamente.' });
+    res.json({ 
+      success: true, 
+      message: 'Ticket actualizado exitosamente.',
+      ticket: updated
+    });
   } catch (error: any) {
     console.error('Error updating ticket:', error);
-    res.status(500).json({ error: 'Error al actualizar el ticket.' });
+    res.status(500).json({ error: 'Error al actualizar el ticket en la base de datos.' });
   }
 });
 

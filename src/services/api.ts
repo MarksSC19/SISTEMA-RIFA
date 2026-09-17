@@ -171,8 +171,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error al actualizar ticket');
-    return res.json();
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al actualizar ticket');
+    return result;
   },
 
   async cancelTicket(id: string) {

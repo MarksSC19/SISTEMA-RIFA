@@ -7,7 +7,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   ticket: Ticket | null;
-  onSaveTicket: (updatedTicket: Ticket) => void;
+  onSaveTicket: (updatedTicket: Ticket) => Promise<void> | void;
 }
 
 export const TicketEditModal: React.FC<Props> = ({
@@ -20,6 +20,7 @@ export const TicketEditModal: React.FC<Props> = ({
   const [dni, setDni] = useState('');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (ticket) {
@@ -28,30 +29,40 @@ export const TicketEditModal: React.FC<Props> = ({
       setPhone(ticket.phone || '');
     }
     setError('');
+    setIsSubmitting(false);
   }, [ticket, isOpen]);
 
   if (!isOpen || !ticket) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!buyerName.trim()) {
       setError('El nombre del comprador es obligatorio.');
       return;
     }
-    if (!dni.trim()) {
-      setError('El DNI o documento de identidad es obligatorio.');
+    if (!dni.trim() || dni.trim().length < 8) {
+      setError('El DNI o documento de identidad debe tener al menos 8 dígitos.');
       return;
     }
 
-    const updated: Ticket = {
-      ...ticket,
-      buyerName: buyerName.trim(),
-      dni: dni.trim(),
-      phone: phone.trim(),
-    };
+    setIsSubmitting(true);
+    setError('');
 
-    onSaveTicket(updated);
-    onClose();
+    try {
+      const updated: Ticket = {
+        ...ticket,
+        buyerName: buyerName.trim(),
+        dni: dni.trim(),
+        phone: phone.trim(),
+      };
+
+      await onSaveTicket(updated);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Error al guardar los cambios en la base de datos.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -70,17 +81,18 @@ export const TicketEditModal: React.FC<Props> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-[#0F1115]">
-                Editar Ticket {ticket.formattedNumber}
+                Editar Boleto {ticket.formattedNumber}
               </h3>
               <p className="text-[11px] text-[#6B7280]">
-                Hash de verificación: {ticket.verificationCode}
+                Código de verificación: {ticket.verificationCode}
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#0F1115] hover:bg-[#E5E7EB]/50 transition-colors cursor-pointer"
+            disabled={isSubmitting}
+            className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#0F1115] hover:bg-[#E5E7EB]/50 transition-colors cursor-pointer disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
@@ -100,13 +112,15 @@ export const TicketEditModal: React.FC<Props> = ({
               Nombre Completo del Comprador *
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
+                required
                 value={buyerName}
                 onChange={(e) => setBuyerName(e.target.value)}
                 placeholder="Nombre y Apellidos"
-                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] font-medium focus:outline-none focus:border-[#0F1115]"
+                disabled={isSubmitting}
+                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] font-medium focus:outline-none focus:border-[#0F1115] disabled:opacity-60 transition-all"
               />
             </div>
           </div>
@@ -114,17 +128,20 @@ export const TicketEditModal: React.FC<Props> = ({
           {/* DNI */}
           <div>
             <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5">
-              DNI / Documento de Identidad *
+              DNI / Documento de Identidad (8 Dígitos) *
             </label>
             <div className="relative">
-              <CreditCard className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+              <CreditCard className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
+                inputMode="numeric"
+                required
                 value={dni}
-                onChange={(e) => setDni(e.target.value)}
+                onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
                 placeholder="8 dígitos"
-                maxLength={12}
-                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl font-mono text-[#0F1115] focus:outline-none focus:border-[#0F1115]"
+                maxLength={8}
+                disabled={isSubmitting}
+                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl font-mono text-[#0F1115] focus:outline-none focus:border-[#0F1115] disabled:opacity-60 transition-all"
               />
             </div>
           </div>
@@ -132,16 +149,19 @@ export const TicketEditModal: React.FC<Props> = ({
           {/* Teléfono */}
           <div>
             <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5">
-              Teléfono / WhatsApp
+              Teléfono / WhatsApp (Opcional)
             </label>
             <div className="relative">
-              <Phone className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+              <Phone className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="tel"
+                inputMode="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="987 654 321"
-                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl font-mono text-[#0F1115] focus:outline-none focus:border-[#0F1115]"
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                placeholder="9 dígitos"
+                maxLength={9}
+                disabled={isSubmitting}
+                className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl font-mono text-[#0F1115] focus:outline-none focus:border-[#0F1115] disabled:opacity-60 transition-all"
               />
             </div>
           </div>
@@ -151,17 +171,23 @@ export const TicketEditModal: React.FC<Props> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-[#4B5563] hover:text-[#0F1115] hover:bg-[#F5F5F3] rounded-xl transition-colors cursor-pointer"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-xs font-semibold text-[#4B5563] hover:text-[#0F1115] hover:bg-[#F5F5F3] rounded-xl transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               id="save-ticket-edit-btn"
               type="submit"
-              className="px-5 py-2 text-xs font-semibold text-white bg-[#0F1115] hover:bg-[#23272F] rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 text-xs font-semibold text-white bg-[#0F1115] hover:bg-[#23272F] rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-60"
             >
-              <Check className="w-3.5 h-3.5 text-[#10B981]" />
-              <span>Guardar Cambios</span>
+              {isSubmitting ? (
+                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5 text-[#10B981]" />
+              )}
+              <span>{isSubmitting ? 'Guardando en BD...' : 'Guardar Cambios'}</span>
             </button>
           </div>
         </form>

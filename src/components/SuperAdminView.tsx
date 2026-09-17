@@ -38,6 +38,7 @@ import { PrizeManagementModal } from './PrizeManagementModal';
 import { RaffleModal } from './RaffleModal';
 import { AdminUserModal } from './AdminUserModal';
 import { SuperAdminProfileModal } from './SuperAdminProfileModal';
+import { TicketEditModal } from './TicketEditModal';
 
 interface Props {
   raffles: Raffle[];
@@ -55,12 +56,14 @@ interface Props {
   onSaveRaffle: (raffle: Raffle) => void;
   onDeleteRaffle: (raffleId: string) => void;
   onSaveAdmin: (admin: AdminUser, password?: string) => void;
+  onDeleteAdmin?: (adminId: string) => void;
   onSaveConfig?: (config: SystemConfig) => void;
   onOpenRegisterTicket?: () => void;
   onSwitchToSalesPanel?: () => void;
   personalSold?: number;
   personalQuota?: number;
   onUpdateCurrentUser?: (user: AuthUser) => void;
+  onUpdateTicket?: (ticket: Ticket) => Promise<void> | void;
   onLogout?: () => void;
 }
 
@@ -89,6 +92,7 @@ export const SuperAdminView: React.FC<Props> = ({
   personalSold = 0,
   personalQuota = 20,
   onUpdateCurrentUser,
+  onUpdateTicket,
   onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -102,6 +106,10 @@ export const SuperAdminView: React.FC<Props> = ({
   const [overviewAdminFilter, setOverviewAdminFilter] = useState<'all' | 'completed' | 'pending'>('all');
   const [ticketSearch, setTicketSearch] = useState('');
   const [ticketSellerFilter, setTicketSellerFilter] = useState<string>('all');
+
+  // Ticket modal state
+  const [isTicketEditModalOpen, setIsTicketEditModalOpen] = useState(false);
+  const [ticketToEdit, setTicketToEdit] = useState<Ticket | null>(null);
   
   // Prize modal states
   const [isPrizeModalOpen, setIsPrizeModalOpen] = useState(false);
@@ -893,7 +901,7 @@ export const SuperAdminView: React.FC<Props> = ({
                           <th className="py-3 px-4">Admin que realizó la venta</th>
                           <th className="py-3 px-4 text-center">Monto</th>
                           <th className="py-3 px-4">Hora de Emisión</th>
-                          <th className="py-3 px-4 text-center">Comprobante</th>
+                          <th className="py-3 px-4 text-center">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E5E7EB]">
@@ -945,16 +953,31 @@ export const SuperAdminView: React.FC<Props> = ({
                                 {t.timeFormatted || 'Reciente'}
                               </td>
                               <td className="py-3 px-4 text-center">
-                                {onVerifyTicket && (
-                                  <button
-                                    onClick={() => onVerifyTicket(t)}
-                                    className="px-2.5 py-1 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                                    title="Ver Comprobante Digital y QR"
-                                  >
-                                    <span>Ver QR</span>
-                                    <ExternalLink className="w-3 h-3 text-[#059669]" />
-                                  </button>
-                                )}
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {onUpdateTicket && (
+                                    <button
+                                      onClick={() => {
+                                        setTicketToEdit(t);
+                                        setIsTicketEditModalOpen(true);
+                                      }}
+                                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-[#0F1115] border border-[#E5E7EB] rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                      title="Editar Nombre y DNI del Participante"
+                                    >
+                                      <Edit2 className="w-3 h-3 text-[#059669]" />
+                                      <span>Editar</span>
+                                    </button>
+                                  )}
+                                  {onVerifyTicket && (
+                                    <button
+                                      onClick={() => onVerifyTicket(t)}
+                                      className="px-2.5 py-1 bg-white hover:bg-[#F5F5F3] text-[#0F1115] border border-[#E5E7EB] rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                      title="Ver Comprobante Digital y QR"
+                                    >
+                                      <span>Ver QR</span>
+                                      <ExternalLink className="w-3 h-3 text-[#059669]" />
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))
@@ -1661,6 +1684,21 @@ export const SuperAdminView: React.FC<Props> = ({
         onProfileUpdated={(updated) => {
           if (onUpdateCurrentUser) {
             onUpdateCurrentUser(updated);
+          }
+        }}
+      />
+
+      {/* Ticket Edit Modal for Superadmin */}
+      <TicketEditModal
+        isOpen={isTicketEditModalOpen}
+        onClose={() => {
+          setIsTicketEditModalOpen(false);
+          setTicketToEdit(null);
+        }}
+        ticket={ticketToEdit}
+        onSaveTicket={async (updated) => {
+          if (onUpdateTicket) {
+            await onUpdateTicket(updated);
           }
         }}
       />

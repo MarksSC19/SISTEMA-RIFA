@@ -396,36 +396,34 @@ export const TicketVerificationView: React.FC<Props> = ({
     <div id="verification-screen-container" className="min-h-screen bg-[#F5F5F3] text-[#0F1115] py-6 sm:py-8 px-4 flex flex-col items-center justify-between font-['Geist',sans-serif]">
       {/* Top Bar con Logo Oficial y Titularidad */}
       <div className="w-full max-w-xl flex items-center justify-between mb-4">
-        <button
-          id="verification-back-btn"
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>{isPublicView ? 'Inicio' : 'Volver al panel'}</span>
-        </button>
+        {isPublicView ? (
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="Logo Oficial" className="w-8 h-8 object-contain bg-white rounded-xl p-0.5 border border-slate-200 shadow-2xs" />
+            <div>
+              <span className="text-xs font-bold text-slate-900 block leading-tight">
+                Rifa Graduación Administración
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">
+                Plataforma Oficial de Verificación · Junín
+              </span>
+            </div>
+          </div>
+        ) : (
+          <button
+            id="verification-back-btn"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver al panel</span>
+          </button>
+        )}
 
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Logo Oficial" className="w-7 h-7 object-contain" />
-          <span className="text-xs font-bold text-slate-900 tracking-tight hidden sm:inline">
-            Rifa Graduación Administración
+          <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full uppercase flex items-center gap-1 shadow-2xs">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>CERTIFICADO OFICIAL</span>
           </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase">
-            CERTIFICADO OFICIAL
-          </span>
-
-          {onGoToLogin && isPublicView && (
-            <button
-              onClick={onGoToLogin}
-              className="text-xs text-slate-600 hover:text-slate-900 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Login</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -669,30 +667,32 @@ export const TicketVerificationView: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Buscador manual por DNI o código */}
-      <div className="w-full max-w-xl mt-6">
-        <form onSubmit={handleSearch} className="relative">
-          <input
-            type="text"
-            placeholder="Buscar por DNI, N° de ticket (#0001) o Código..."
-            value={searchCode}
-            onChange={(e) => setSearchCode(e.target.value)}
-            className="w-full pl-3.5 pr-10 py-3 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 shadow-xs transition-all"
-          />
-          <button
-            type="submit"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-900 cursor-pointer"
-            title="Buscar ticket o DNI"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        </form>
-        {searchError && (
-          <p className="mt-1.5 text-xs text-rose-600 text-center font-medium">
-            {searchError}
-          </p>
-        )}
-      </div>
+      {/* Buscador manual por DNI o código - SOLO PARA ADMINISTRADORES, NUNCA EN VISTA PÚBLICA */}
+      {!isPublicView && (
+        <div className="w-full max-w-xl mt-6">
+          <form onSubmit={handleSearch} className="relative">
+            <input
+              type="text"
+              placeholder="Buscar por DNI, N° de ticket (#0001) o Código..."
+              value={searchCode}
+              onChange={(e) => setSearchCode(e.target.value)}
+              className="w-full pl-3.5 pr-10 py-3 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 shadow-xs transition-all"
+            />
+            <button
+              type="submit"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-900 cursor-pointer"
+              title="Buscar ticket o DNI"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </form>
+          {searchError && (
+            <p className="mt-1.5 text-xs text-rose-600 text-center font-medium">
+              {searchError}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mt-8 mb-2 text-xs font-mono text-slate-400 text-center flex items-center justify-center gap-2">
         <img src="/logo.png" alt="Logo" className="w-4 h-4 object-contain" />

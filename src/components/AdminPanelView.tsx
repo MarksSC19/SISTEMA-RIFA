@@ -30,7 +30,7 @@ interface Props {
   onVerifyTicket: (ticket: Ticket) => void;
   onBackToOverview: () => void;
   onToggleRaffleStatus?: (raffleId: string) => void;
-  onUpdateTicket?: (ticket: Ticket) => void;
+  onUpdateTicket?: (ticket: Ticket) => Promise<void> | void;
   onDeleteTicket?: (ticketId: string) => void;
   onLogout?: () => void;
 }
@@ -482,8 +482,8 @@ export const AdminPanelView: React.FC<Props> = ({
           setTicketToEdit(null);
         }}
         ticket={ticketToEdit}
-        onSaveTicket={(updated) => {
-          if (onUpdateTicket) onUpdateTicket(updated);
+        onSaveTicket={async (updated) => {
+          if (onUpdateTicket) await onUpdateTicket(updated);
         }}
       />
     </div>
