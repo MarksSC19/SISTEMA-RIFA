@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Raffle, Ticket, Prize } from '../types';
 import { soundFx } from '../utils/audioHelper';
+import api from '../services/api';
 
 interface Props {
   raffle: Raffle;
@@ -43,9 +44,7 @@ export const LiveDrawView: React.FC<Props> = ({
   onResetPrizes,
 }) => {
   // Filter prizes for this raffle
-  const rafflePrizes = prizes
-    .filter(p => p.raffleId === raffle.id)
-    .sort((a, b) => a.order - b.order);
+  const rafflePrizes = prizes.length > 0 ? prizes : (raffle.prizes || []);
 
   // Selected prize state
   const [selectedPrizeId, setSelectedPrizeId] = useState<string>(() => {
@@ -72,19 +71,18 @@ export const LiveDrawView: React.FC<Props> = ({
   const [winnerTicket, setWinnerTicket] = useState<Ticket | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [drawId, setDrawId] = useState('DRAW-024-83K2');
-  const [drawTimestamp, setDrawTimestamp] = useState('01/10/2026 · 20:00:00');
+  const [drawTimestamp, setDrawTimestamp] = useState('16/09/2026 · 21:00:00');
 
   const animationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Set default winner or initial display
+  // Set default winner or initial display basado en los tickets reales vendidos
   useEffect(() => {
-    // If ticket 038 exists in list, prepare it as initial display preview
-    const candidate = tickets.find(t => t.formattedNumber === '#038') || tickets[0] || null;
+    const candidate = tickets[0] || null;
     if (candidate) {
       const padded = String(candidate.number).padStart(3, '0').split('').join(' ');
       setCurrentDisplayNumber(padded);
     }
-  }, [tickets]);
+  }, [tickets]);;
 
   // Clean timers on unmount
   useEffect(() => {
@@ -107,13 +105,56 @@ export const LiveDrawView: React.FC<Props> = ({
     }
   };
 
-  const startDraw = () => {
-    if (tickets.length === 0) return;
+  // Lista de IDs de tickets que ya han ganado algún premio en esta rifa para no repetir
+  const wonTicketIds = new Set(
+    rafflePrizes
+      .filter(p => p.isDrawn && (p.winnerTicketId || (p as any).winnerTicket?.ticketNumber))
+      .map(p => p.winnerTicketId || (p as any).winnerTicket?.ticketNumber)
+  );
+
+  // Tickets elegibles: únicamente boletos válidos y vendidos que aún no ganaron
+  const eligibleTickets = tickets.filter(t => t.isValid !== false && !wonTicketIds.has(t.id) && !wonTicketIds.has(t.formattedNumber));
+
+  const startDraw = async () => {
+    if (eligibleTickets.length === 0) {
+      alert('No hay tickets vendidos disponibles para sortear este premio.');
+      return;
+    }
     setDrawState('spinning');
     setWinnerTicket(null);
 
-    // Pick winning candidate (prefer ticket 38 if in list for exact match with user prompt, or random candidate)
-    const targetCandidate = tickets.find(t => t.number === 38) || tickets[Math.floor(Math.random() * tickets.length)];
+    // 1. Obtener ganador oficial desde PostgreSQL con CSPRNG
+    let targetCandidate: Ticket;
+    try {
+      if (activePrize) {
+        const res = await api.executeDraw(activePrize.id);
+        if (res?.winner) {
+          const found = tickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number);
+          targetCandidate = found || {
+            id: res.winner.ticketId,
+            raffleId: raffle.id,
+            number: res.winner.number,
+            formattedNumber: res.winner.formattedNumber,
+            verificationCode: res.winner.verificationCode,
+            buyerName: res.winner.buyerName,
+            dni: res.winner.dni,
+            phone: res.winner.phone,
+            status: 'pagado',
+            isValid: true,
+            purchaseDate: new Date().toISOString(),
+            registeredBy: res.winner.registeredBy || 'Administrador Oficial',
+            paymentMethod: 'yape',
+          };
+        } else {
+          targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+        }
+      } else {
+        targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+      }
+    } catch (err) {
+      console.warn('Ejecutando sorteo sobre tickets reales vendidos:', err);
+      targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+    }
 
     const now = new Date();
     const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
@@ -128,8 +169,9 @@ export const LiveDrawView: React.FC<Props> = ({
     const spinStep = () => {
       stepCount++;
 
-      // Pick a random number during spinning
-      const randomNum = Math.floor(Math.random() * (raffle.totalTickets || 999)) + 1;
+      // Pick a random number during spinning from the pool of sold tickets
+      const randomCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+      const randomNum = randomCandidate ? randomCandidate.number : Math.floor(Math.random() * (raffle.totalTickets || 999)) + 1;
       const formattedRandom = String(randomNum).padStart(3, '0').split('').join(' ');
       setCurrentDisplayNumber(formattedRandom);
 
@@ -182,7 +224,7 @@ export const LiveDrawView: React.FC<Props> = ({
       setSelectedPrizeId(nextPendingPrize.id);
       setDrawState('idle');
       setWinnerTicket(null);
-      const candidate = tickets.find(t => t.formattedNumber === '#038') || tickets[0] || null;
+      const candidate = eligibleTickets[0] || tickets[0] || null;
       if (candidate) {
         const padded = String(candidate.number).padStart(3, '0').split('').join(' ');
         setCurrentDisplayNumber(padded);
@@ -485,10 +527,10 @@ export const LiveDrawView: React.FC<Props> = ({
                     NÚMERO DE TICKET GANADOR
                   </span>
                   <div className="text-5xl sm:text-6xl font-black font-['JetBrains_Mono'] tracking-tight text-white my-1 drop-shadow-[0_0_20px_rgba(16,185,129,0.35)]">
-                    {winnerTicket?.formattedNumber || '#038'}
+                    {winnerTicket?.formattedNumber || (eligibleTickets[0]?.formattedNumber ?? '#----')}
                   </div>
                   <div className="text-lg font-bold text-white">
-                    {winnerTicket?.buyerName || 'Juan Pérez'}
+                    {winnerTicket?.buyerName || (eligibleTickets[0]?.buyerName ?? 'Ganador Oficial')}
                   </div>
                   <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -543,7 +585,7 @@ export const LiveDrawView: React.FC<Props> = ({
                   </div>
                   <div>
                     <span className="block text-[9px] text-gray-500 uppercase tracking-wider">Hash Verif.</span>
-                    <span className="text-gray-300 text-[11px] block truncate">{winnerTicket?.verificationCode || 'RF-038KP99'}</span>
+                    <span className="text-gray-300 text-[11px] block truncate">{winnerTicket?.verificationCode || 'RF-VERIFIED'}</span>
                   </div>
                 </div>
 

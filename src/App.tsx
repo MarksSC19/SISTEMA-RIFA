@@ -735,7 +735,12 @@ export default function App() {
     }));
   };
 
-  const handleResetPrizes = (raffleId: string) => {
+  const handleResetPrizes = async (raffleId: string) => {
+    try {
+      await api.resetDraws();
+    } catch (err) {
+      console.warn('Reset local de premios:', err);
+    }
     setPrizes(prev => prev.map(p => {
       if (p.raffleId === raffleId) {
         return {
