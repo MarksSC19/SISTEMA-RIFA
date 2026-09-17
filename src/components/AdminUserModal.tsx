@@ -65,10 +65,12 @@ export const AdminUserModal: React.FC<Props> = ({
       setError('El número de DNI es obligatorio y debe contener exactamente 8 dígitos numéricos.');
       return;
     }
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setError('Ingrese un correo electrónico válido.');
+    if (cleanEmail && !cleanEmail.includes('@')) {
+      setError('Ingrese un correo electrónico válido o déjelo en blanco.');
       return;
     }
+
+    const effectiveEmail = cleanEmail || `admin.${cleanDni}@rifas.pe`;
 
     const quotaNum = parseInt(assignedQuota, 10);
     if (isNaN(quotaNum) || quotaNum <= 0) {
@@ -90,7 +92,7 @@ export const AdminUserModal: React.FC<Props> = ({
       id: adminToEdit ? adminToEdit.id : `adm-new-${Date.now().toString(36)}`,
       name: cleanName,
       dni: cleanDni,
-      email: cleanEmail,
+      email: effectiveEmail,
       password: effectivePassword,
       assignedRafflesCount: adminToEdit ? adminToEdit.assignedRafflesCount : 1,
       totalSold: adminToEdit ? adminToEdit.totalSold : 0,
@@ -176,8 +178,9 @@ export const AdminUserModal: React.FC<Props> = ({
 
           {/* Correo */}
           <div>
-            <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5">
-              Correo Electrónico *
+            <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Correo Electrónico (Opcional)</span>
+              <span className="text-[10px] text-[#9CA3AF] lowercase font-normal">por defecto: admin.[dni]@rifas.pe</span>
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -185,7 +188,7 @@ export const AdminUserModal: React.FC<Props> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="pedro.g@rifas.pe"
+                placeholder={dni ? `admin.${dni}@rifas.pe` : 'admin@rifas.pe'}
                 className="w-full pl-9 pr-3 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] focus:outline-none focus:border-[#0F1115]"
               />
             </div>
@@ -193,8 +196,9 @@ export const AdminUserModal: React.FC<Props> = ({
 
           {/* Contraseña */}
           <div>
-            <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5">
-              Contraseña de Acceso *
+            <label className="block font-semibold text-[#374151] uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Contraseña de Acceso (Opcional)</span>
+              <span className="text-[10px] text-[#059669] font-medium">Por defecto: Su DNI</span>
             </label>
             <div className="relative">
               <Lock className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -202,7 +206,7 @@ export const AdminUserModal: React.FC<Props> = ({
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={adminToEdit ? 'Dejar en blanco para mantener la actual' : '••••••••'}
+                placeholder={adminToEdit ? 'Dejar en blanco para mantener la actual' : (dni ? `Por defecto será su DNI (${dni})` : 'Por defecto será su número de DNI')}
                 autoComplete="new-password"
                 className="w-full pl-9 pr-10 py-2.5 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl text-[#0F1115] focus:outline-none focus:border-[#0F1115] transition-all"
               />
@@ -216,8 +220,11 @@ export const AdminUserModal: React.FC<Props> = ({
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-[#6B7280] mt-1">
-              {adminToEdit ? 'Modifique este campo para asignarle una nueva contraseña al administrador.' : 'Si se deja en blanco, su contraseña inicial será su número de DNI (acceso por primera vez).'}
+            <p className="text-[11px] text-[#059669] mt-1 font-medium flex items-center gap-1">
+              <Check className="w-3 h-3 text-[#059669]" />
+              {adminToEdit 
+                ? 'Dejar en blanco para mantener la contraseña actual.' 
+                : 'No es necesario ingresar contraseña: su DNI será su clave inicial para su primer ingreso.'}
             </p>
           </div>
 

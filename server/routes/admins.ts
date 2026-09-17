@@ -54,12 +54,12 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
 router.post('/', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { name, dni, email, password } = req.body;
-    if (!name || !dni || !email) {
-      return res.status(400).json({ error: 'Nombre, DNI y Correo son obligatorios.' });
+    if (!name || !dni) {
+      return res.status(400).json({ error: 'Nombre y DNI son obligatorios.' });
     }
 
     const cleanDni = dni.trim();
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : `admin.${cleanDni}@rifas.pe`;
     const cleanName = name.trim().toUpperCase();
     const defaultPass = password && password.trim().length > 0 ? password.trim() : cleanDni;
     const passwordHash = await bcrypt.hash(defaultPass, 10);
