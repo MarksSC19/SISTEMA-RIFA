@@ -1107,7 +1107,8 @@ export const SuperAdminView: React.FC<Props> = ({
                       id="superadmin-reset-prizes-btn"
                       onClick={() => {
                         if (window.confirm('⚠️ MODO PRUEBAS: ¿Deseas reiniciar la adjudicación de todos los premios para volver a sortearlos desde cero?')) {
-                          onResetPrizes(selectedRaffleId || 'rf-024');
+                          const targetRaffleId = selectedRaffleForPrizes !== 'all' ? selectedRaffleForPrizes : (raffles[0]?.id || 'rf-024');
+                          onResetPrizes(targetRaffleId);
                         }
                       }}
                       className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
