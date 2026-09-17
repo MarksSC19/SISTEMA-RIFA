@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void;
   adminToEdit?: AdminUser | null;
   raffles: Raffle[];
-  onSaveAdmin: (admin: AdminUser, password?: string) => void;
+  onSaveAdmin: (admin: AdminUser, password?: string, isNew?: boolean) => void;
 }
 
 export const AdminUserModal: React.FC<Props> = ({
@@ -41,7 +41,7 @@ export const AdminUserModal: React.FC<Props> = ({
       setName('');
       setDni('');
       setEmail('');
-      setPassword('password123');
+      setPassword('');
       setAssignedRaffleId(raffles[0]?.id ?? '');
       setAssignedQuota('20');
       setStatus('activo');
@@ -53,16 +53,20 @@ export const AdminUserModal: React.FC<Props> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    const cleanName = name.trim();
+    const cleanDni = dni.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName) {
       setError('El nombre del administrador es obligatorio.');
       return;
     }
-    if (!email.trim() || !email.includes('@')) {
-      setError('Ingrese un correo electrónico válido.');
+    if (!cleanDni || !/^\d{8}$/.test(cleanDni)) {
+      setError('El número de DNI es obligatorio y debe contener exactamente 8 dígitos numéricos.');
       return;
     }
-    if (!adminToEdit && !password.trim()) {
-      setError('Defina una contraseña para el nuevo administrador.');
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('Ingrese un correo electrónico válido.');
       return;
     }
 
@@ -72,20 +76,22 @@ export const AdminUserModal: React.FC<Props> = ({
       return;
     }
 
-    const initials = name
-      .trim()
+    const initials = cleanName
       .split(' ')
       .map(w => w[0])
       .join('')
       .substring(0, 2)
       .toUpperCase() || 'AD';
 
+    const effectivePassword = password.trim() || cleanDni;
+    const isNew = !adminToEdit;
+
     const savedAdmin: AdminUser = {
-      id: adminToEdit ? adminToEdit.id : `adm-${Date.now().toString(36)}`,
-      name: name.trim(),
-      dni: dni.trim() || undefined,
-      email: email.trim().toLowerCase(),
-      password: password.trim() || undefined,
+      id: adminToEdit ? adminToEdit.id : `adm-new-${Date.now().toString(36)}`,
+      name: cleanName,
+      dni: cleanDni,
+      email: cleanEmail,
+      password: effectivePassword,
       assignedRafflesCount: adminToEdit ? adminToEdit.assignedRafflesCount : 1,
       totalSold: adminToEdit ? adminToEdit.totalSold : 0,
       assignedQuota: quotaNum,
@@ -94,7 +100,7 @@ export const AdminUserModal: React.FC<Props> = ({
       assignedRaffleId,
     };
 
-    onSaveAdmin(savedAdmin, password.trim() || undefined);
+    onSaveAdmin(savedAdmin, effectivePassword, isNew);
     onClose();
   };
 
@@ -211,7 +217,7 @@ export const AdminUserModal: React.FC<Props> = ({
               </button>
             </div>
             <p className="text-[10px] text-[#6B7280] mt-1">
-              {adminToEdit ? 'Modifique este campo para actualizar su contraseña.' : 'Contraseña sugerida: password123'}
+              {adminToEdit ? 'Modifique este campo para asignarle una nueva contraseña al administrador.' : 'Si se deja en blanco, su contraseña inicial será su número de DNI (acceso por primera vez).'}
             </p>
           </div>
 

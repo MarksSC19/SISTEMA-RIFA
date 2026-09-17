@@ -56,7 +56,7 @@ interface Props {
   onDeletePrize: (prizeId: string) => void;
   onSaveRaffle: (raffle: Raffle) => void;
   onDeleteRaffle: (raffleId: string) => void;
-  onSaveAdmin: (admin: AdminUser, password?: string) => void;
+  onSaveAdmin: (admin: AdminUser, password?: string, isNew?: boolean) => void;
   onDeleteAdmin?: (adminId: string) => void;
   onSaveConfig?: (config: SystemConfig) => void;
   onOpenRegisterTicket?: () => void;

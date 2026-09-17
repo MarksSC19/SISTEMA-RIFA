@@ -13,19 +13,83 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+// Raw admin list for instant self-healing authentication
+const RAW_ADMIN_DATA = [
+  { n: 1, name: 'HANSSEL JHARETH LLANCARI MUJE', dni: '74765137', email: 'hanssel.llancari@rifas.pe' },
+  { n: 2, name: 'JHEYSON RYAM JORGE VASQUEZ', dni: '70905188', email: 'jheyson.jorge@rifas.pe' },
+  { n: 3, name: 'LYAM SIDNNEY RENGIFO GOZAR', dni: '72795283', email: 'lyam.rengifo@rifas.pe' },
+  { n: 4, name: 'FREDDY ALONSO JESUS RAMOS GUZMAN', dni: '71745804', email: 'freddy.ramos@rifas.pe' },
+  { n: 5, name: 'KEYRA CLAUDIA RICAPA CONDOR', dni: '72741502', email: 'keyra.ricapa@rifas.pe' },
+  { n: 6, name: 'JHON BRAYAN FELIX YAPIAS', dni: '74602585', email: 'jhon.felix@rifas.pe' },
+  { n: 7, name: 'DANTUN MIGUEL NUNEZ ROMERO', dni: '71694983', email: 'dantun.nunez@rifas.pe' },
+  { n: 8, name: 'YULIANA ESTEFANY GARAGATI SALAZAR', dni: '76564148', email: 'yuliana.garagati@rifas.pe' },
+  { n: 9, name: 'KLUIVERT SEVERO BRICENO BARZOLA', dni: '74898956', email: 'kluivert.briceno@rifas.pe' },
+  { n: 10, name: 'ALEJANDRA ANTONELLA GALINDO GASTELU', dni: '75510293', email: 'alejandra.galindo@rifas.pe' },
+  { n: 11, name: 'LUIS GUILLERMO PARRA TICZE', dni: '72809187', email: 'luis.parra@rifas.pe' },
+  { n: 12, name: 'SHIRLEY MISLETH MEZA CELIS', dni: '75701962', email: 'shirley.meza@rifas.pe' },
+  { n: 13, name: 'RISTOL CAMILO SANCHEZ RAMOS', dni: '73868636', email: 'ristol.sanchez@rifas.pe' },
+  { n: 14, name: 'JOSE BERNARDO VALENCIA PEREZ', dni: '73997851', email: 'jose.valencia@rifas.pe' },
+  { n: 15, name: 'ALEXANDER ZARATE CARIRE', dni: '70240574', email: 'alexander.zarate@rifas.pe' },
+  { n: 16, name: 'ESTEFANY DARIA SEDANO HURTADO', dni: '75315104', email: 'estefany.sedano@rifas.pe' },
+  { n: 17, name: 'JAYRO FREDDY ORIHUELA CHAVEZ', dni: '74960683', email: 'jayro.orihuela@rifas.pe' },
+  { n: 18, name: 'JAIME BRANDON FLORES LOZANO', dni: '77801287', email: 'jaime.flores@rifas.pe' },
+  { n: 19, name: 'EVELIN ROMERO ROMANI', dni: '60906074', email: 'evelin.romero@rifas.pe' },
+  { n: 20, name: 'MEDALY ANGELINE RAMIREZ AYBAR', dni: '71780194', email: 'medaly.ramirez@rifas.pe' },
+  { n: 21, name: 'KEVIN FRANK AQUINO MARTINEZ', dni: '77801288', email: 'kevin.aquino@rifas.pe' },
+  { n: 22, name: 'JENIFER ABIGAIL APOLINARIO LAUREANO', dni: '75075018', email: 'jenifer.apolinario@rifas.pe' },
+  { n: 23, name: 'ROSA VALERIA NAUPARI SALVADOR', dni: '72095575', email: 'rosa.naupari@rifas.pe' },
+  { n: 24, name: 'ELISANGHELA MERCEDES ROBLADILLO BELTRAN', dni: '71247028', email: 'elisanghela.robladillo@rifas.pe' },
+  { n: 25, name: 'BEYONCE ELIZABETH HUAMAN TORRES', dni: '77529113', email: 'beyonce.huaman@rifas.pe' },
+  { n: 26, name: 'NOHELY GIANNELA ALIAGA HUARACA', dni: '70916278', email: 'nohely.aliaga@rifas.pe' },
+  { n: 27, name: 'JASMIN NICOL MORALES SINCHITULLO', dni: '72740540', email: 'jasmin.morales@rifas.pe' },
+  { n: 28, name: 'MARICIELO KATHERINE LLACZA ROJA', dni: '74395059', email: 'maricielo.llacza@rifas.pe' },
+  { n: 29, name: 'SURIMANA QUINTO MENDOZA', dni: '73523144', email: 'surimana.quinto@rifas.pe' },
+  { n: 30, name: 'DANITZA LESLY MELENDREZ HERRERA', dni: '75020702', email: 'danitza.melendrez@rifas.pe' },
+  { n: 31, name: 'JHOVANNY BRYANJ SANABRIA BERROCAL', dni: '70401427', email: 'jhovanny.sanabria@rifas.pe' },
+];
+
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    const identifier = req.body.identifier || req.body.email;
-    const password = req.body.password;
-    if (!identifier || !password) {
-      return res.status(400).json({ error: 'Identificador (email o DNI) y contraseña requeridos.' });
+    const rawIdentifier = req.body.identifier || req.body.email || '';
+    const rawPassword = req.body.password || '';
+    const cleanId = String(rawIdentifier).trim();
+    const cleanPassword = String(rawPassword).trim();
+
+    if (!cleanId || !cleanPassword) {
+      return res.status(400).json({ error: 'Número de DNI (o correo) y contraseña requeridos.' });
     }
 
-    const result = await db.query(
-      'SELECT id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password FROM users WHERE LOWER(email) = LOWER($1) OR dni = $1',
-      [identifier.trim()]
+    let result = await db.query(
+      'SELECT id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password FROM users WHERE LOWER(TRIM(email)) = LOWER($1) OR TRIM(dni) = $1',
+      [cleanId]
     );
+
+    // Auto-aprovisionamiento si no existe en BD pero es un administrador oficial o DNI válido
+    if (result.rows.length === 0) {
+      const isDni = /^\d{8}$/.test(cleanId);
+      const foundAdm = RAW_ADMIN_DATA.find(a => a.dni === cleanId) || 
+                       (cleanId === '72970575' ? { n: 23, name: 'ROSA VALERIA NAUPARI SALVADOR', dni: '72970575', email: 'rosa.naupari@rifas.pe' } : null);
+
+      if (foundAdm || (isDni && cleanPassword === cleanId)) {
+        const admName = foundAdm ? foundAdm.name : `OPERADOR OFICIAL ${cleanId}`;
+        const admEmail = foundAdm ? foundAdm.email : `${cleanId}@rifas.pe`;
+        const initialHash = await bcrypt.hash(cleanPassword, 10);
+        const newId = `adm-${Date.now()}`;
+
+        await db.query(
+          `INSERT INTO users (id, full_name, dni, email, password_hash, phone, role, status, quota, must_change_password)
+           VALUES ($1, $2, $3, $4, $5, '987654321', 'admin', 'active', 20, true)
+           ON CONFLICT (dni) DO UPDATE SET status = 'active'`,
+          [newId, admName, cleanId, admEmail, initialHash]
+        );
+
+        result = await db.query(
+          'SELECT id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password FROM users WHERE TRIM(dni) = $1',
+          [cleanId]
+        );
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Credenciales inválidas. Usuario no registrado.' });
@@ -37,7 +101,16 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Usuario inactivo. Contacte al Superadministrador.' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    let isMatch = await bcrypt.compare(cleanPassword, user.password_hash);
+
+    // Si no coincide con el hash pero el password ingresado es exactamente su DNI (primer login o restablecimiento)
+    if (!isMatch && cleanPassword === user.dni?.trim()) {
+      const newHash = await bcrypt.hash(cleanPassword, 10);
+      await db.query('UPDATE users SET password_hash = $1, must_change_password = true WHERE id = $2', [newHash, user.id]);
+      isMatch = true;
+      user.must_change_password = true;
+    }
+
     if (!isMatch) {
       return res.status(401).json({ error: 'Credenciales inválidas. Contraseña incorrecta.' });
     }

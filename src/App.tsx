@@ -398,13 +398,15 @@ export default function App() {
   };
 
   // Admin CRUD
-  const handleSaveAdmin = async (savedAdmin: AdminUser, password?: string) => {
-    // 1. Actualización local
+  const handleSaveAdmin = async (savedAdmin: AdminUser, password?: string, isNew?: boolean) => {
+    const shouldCreate = Boolean(isNew || !savedAdmin.id || savedAdmin.id.startsWith('adm-new'));
+
+    // 1. Actualización local inmediata
     setAdmins(prev => {
-      const idx = prev.findIndex(a => a.id === savedAdmin.id || a.dni === savedAdmin.dni);
+      const idx = prev.findIndex(a => (savedAdmin.id && a.id === savedAdmin.id) || (savedAdmin.dni && a.dni === savedAdmin.dni));
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = savedAdmin;
+        copy[idx] = { ...copy[idx], ...savedAdmin };
         return copy;
       }
       return [...prev, savedAdmin];
@@ -412,19 +414,23 @@ export default function App() {
 
     // 2. Persistencia en la Base de Datos PostgreSQL
     try {
-      if (savedAdmin.id && !savedAdmin.id.startsWith('adm-new')) {
+      if (shouldCreate) {
+        const res = await api.createAdmin({
+          name: savedAdmin.name,
+          dni: savedAdmin.dni || '',
+          email: savedAdmin.email,
+          password: password && password.trim().length > 0 ? password.trim() : (savedAdmin.dni || '12345678'),
+        });
+        if (res && res.id) {
+          savedAdmin.id = res.id;
+          setAdmins(prev => prev.map(a => (a.dni === savedAdmin.dni || a.id === savedAdmin.id) ? { ...a, id: res.id } : a));
+        }
+      } else {
         await api.updateAdmin(savedAdmin.id, {
           name: savedAdmin.name,
           dni: savedAdmin.dni,
           email: savedAdmin.email,
           status: savedAdmin.status,
-          password: password && password.trim().length > 0 ? password.trim() : undefined,
-        });
-      } else {
-        await api.createAdmin({
-          name: savedAdmin.name,
-          dni: savedAdmin.dni || '',
-          email: savedAdmin.email,
           password: password && password.trim().length > 0 ? password.trim() : undefined,
         });
       }

@@ -11,7 +11,7 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-// GET /api/admins - Lista de los 31 admins con conteo de ventas en tiempo real
+// GET /api/admins - Lista de todos los admins con conteo de ventas en tiempo real
 router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const result = await db.query(`
@@ -50,7 +50,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// POST /api/admins - Crear nuevo admin (SuperAdmin)
+// POST /api/admins - Crear nuevo admin (SuperAdmin) con UPSERT
 router.post('/', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { name, dni, email, password } = req.body;
@@ -58,59 +58,115 @@ router.post('/', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Nombre, DNI y Correo son obligatorios.' });
     }
 
-    const passwordHash = await bcrypt.hash(password || 'password123', 10);
+    const cleanDni = dni.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim().toUpperCase();
+    const defaultPass = password && password.trim().length > 0 ? password.trim() : cleanDni;
+    const passwordHash = await bcrypt.hash(defaultPass, 10);
     const newId = `adm-${Date.now()}`;
 
-    await db.query(
-      `INSERT INTO users (id, full_name, dni, email, password_hash, phone, role, status, quota)
-       VALUES ($1, $2, $3, $4, $5, '987654321', 'admin', 'active', 20)`,
-      [newId, name.trim().toUpperCase(), dni.trim(), email.trim().toLowerCase(), passwordHash]
+    const insertRes = await db.query(
+      `INSERT INTO users (id, full_name, dni, email, password_hash, phone, role, status, quota, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, '987654321', 'admin', 'active', 20, true)
+       ON CONFLICT (dni) DO UPDATE SET
+         full_name = EXCLUDED.full_name,
+         email = EXCLUDED.email,
+         password_hash = EXCLUDED.password_hash,
+         status = 'active',
+         must_change_password = true
+       RETURNING id, full_name as name, dni, email, quota as "assignedQuota", status`,
+      [newId, cleanName, cleanDni, cleanEmail, passwordHash]
     );
 
-    res.status(201).json({
+    const created = insertRes.rows[0] || {
       id: newId,
-      name: name.trim().toUpperCase(),
-      dni: dni.trim(),
-      email: email.trim().toLowerCase(),
-      totalSold: 0,
+      name: cleanName,
+      dni: cleanDni,
+      email: cleanEmail,
       assignedQuota: 20,
-      status: 'activo',
-      avatarInitials: getInitials(name),
+      status: 'active',
+    };
+
+    res.status(201).json({
+      id: created.id,
+      name: created.name,
+      dni: created.dni,
+      email: created.email,
+      totalSold: 0,
+      assignedQuota: created.assignedQuota || 20,
+      status: created.status === 'active' ? 'activo' : 'inactivo',
+      avatarInitials: getInitials(created.name),
       assignedRaffleId: 'rf-024',
     });
   } catch (error: any) {
-    if (error.code === '23505') {
-      return res.status(409).json({ error: 'El DNI o correo ya se encuentra registrado.' });
-    }
     console.error('Error creating admin:', error);
     res.status(500).json({ error: 'Error al registrar administrador.' });
   }
 });
 
-// PUT /api/admins/:id - Actualizar admin
+// PUT /api/admins/:id - Actualizar admin o insertar si no existe (UPSERT)
 router.put('/:id', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, dni, email, status, password } = req.body;
 
-    let query = 'UPDATE users SET full_name = COALESCE($1, full_name), dni = COALESCE($2, dni), email = COALESCE($3, email), status = COALESCE($4, status)';
-    const params: any[] = [
-      name ? name.trim().toUpperCase() : null,
-      dni ? dni.trim() : null,
-      email ? email.trim().toLowerCase() : null,
-      status ? (status === 'activo' ? 'active' : 'inactive') : null,
-    ];
+    const cleanDni = dni ? dni.trim() : null;
+    const cleanEmail = email ? email.trim().toLowerCase() : null;
+    const cleanName = name ? name.trim().toUpperCase() : null;
+    const cleanStatus = status ? (status === 'activo' ? 'active' : 'inactive') : null;
 
+    let updateRes;
     if (password && password.trim().length > 0) {
       const passwordHash = await bcrypt.hash(password.trim(), 10);
-      query += `, password_hash = $5, must_change_password = false WHERE id = $6 OR dni = $7`;
-      params.push(passwordHash, id, dni ? dni.trim() : id);
+      updateRes = await db.query(
+        `UPDATE users 
+         SET full_name = COALESCE($1, full_name), 
+             dni = COALESCE($2, dni), 
+             email = COALESCE($3, email), 
+             status = COALESCE($4, status),
+             password_hash = $5,
+             must_change_password = false
+         WHERE id = $6 OR (dni = $2 AND $2 IS NOT NULL)`,
+        [cleanName, cleanDni, cleanEmail, cleanStatus, passwordHash, id]
+      );
     } else {
-      query += ` WHERE id = $5 OR dni = $6`;
-      params.push(id, dni ? dni.trim() : id);
+      updateRes = await db.query(
+        `UPDATE users 
+         SET full_name = COALESCE($1, full_name), 
+             dni = COALESCE($2, dni), 
+             email = COALESCE($3, email), 
+             status = COALESCE($4, status)
+         WHERE id = $5 OR (dni = $2 AND $2 IS NOT NULL)`,
+        [cleanName, cleanDni, cleanEmail, cleanStatus, id]
+      );
     }
 
-    await db.query(query, params);
+    // Si no existía el usuario en BD, lo insertamos para garantizar su acceso
+    if (updateRes.rowCount === 0 && cleanDni) {
+      const effectivePass = password && password.trim().length > 0 ? password.trim() : cleanDni;
+      const initialHash = await bcrypt.hash(effectivePass, 10);
+      const newId = id && id.startsWith('adm-') ? id : `adm-${Date.now()}`;
+      await db.query(
+        `INSERT INTO users (id, full_name, dni, email, password_hash, phone, role, status, quota, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, '987654321', 'admin', $6, 20, $7)
+         ON CONFLICT (dni) DO UPDATE SET
+           full_name = EXCLUDED.full_name,
+           email = EXCLUDED.email,
+           password_hash = EXCLUDED.password_hash,
+           status = EXCLUDED.status,
+           must_change_password = EXCLUDED.must_change_password`,
+        [
+          newId, 
+          cleanName || 'ADMINISTRADOR', 
+          cleanDni, 
+          cleanEmail || `${cleanDni}@rifas.pe`, 
+          initialHash, 
+          cleanStatus || 'active', 
+          password ? false : true
+        ]
+      );
+    }
+
     res.json({ success: true, message: 'Administrador actualizado correctamente.' });
   } catch (error: any) {
     console.error('Error updating admin:', error);
