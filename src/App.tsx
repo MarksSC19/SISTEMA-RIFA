@@ -398,9 +398,10 @@ export default function App() {
   };
 
   // Admin CRUD
-  const handleSaveAdmin = (savedAdmin: AdminUser, password?: string) => {
+  const handleSaveAdmin = async (savedAdmin: AdminUser, password?: string) => {
+    // 1. Actualización local
     setAdmins(prev => {
-      const idx = prev.findIndex(a => a.id === savedAdmin.id);
+      const idx = prev.findIndex(a => a.id === savedAdmin.id || a.dni === savedAdmin.dni);
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = savedAdmin;
@@ -409,22 +410,26 @@ export default function App() {
       return [...prev, savedAdmin];
     });
 
-    // Synchronize demo auth credentials
-    const demoIdx = DEMO_AUTH_USERS.findIndex(u => u.email.toLowerCase() === savedAdmin.email.toLowerCase());
-    if (demoIdx >= 0) {
-      DEMO_AUTH_USERS[demoIdx].name = savedAdmin.name;
-      if (password) DEMO_AUTH_USERS[demoIdx].password = password;
-      DEMO_AUTH_USERS[demoIdx].assignedRaffleId = savedAdmin.assignedRaffleId;
-    } else {
-      DEMO_AUTH_USERS.push({
-        id: `user-${savedAdmin.id}`,
-        name: savedAdmin.name,
-        email: savedAdmin.email,
-        password: password || 'password123',
-        role: 'admin',
-        assignedRaffleId: savedAdmin.assignedRaffleId,
-        avatarInitials: savedAdmin.avatarInitials,
-      });
+    // 2. Persistencia en la Base de Datos PostgreSQL
+    try {
+      if (savedAdmin.id && !savedAdmin.id.startsWith('adm-new')) {
+        await api.updateAdmin(savedAdmin.id, {
+          name: savedAdmin.name,
+          dni: savedAdmin.dni,
+          email: savedAdmin.email,
+          status: savedAdmin.status,
+          password: password && password.trim().length > 0 ? password.trim() : undefined,
+        });
+      } else {
+        await api.createAdmin({
+          name: savedAdmin.name,
+          dni: savedAdmin.dni || '',
+          email: savedAdmin.email,
+          password: password && password.trim().length > 0 ? password.trim() : undefined,
+        });
+      }
+    } catch (apiErr: any) {
+      console.error('Error al persistir administrador en base de datos:', apiErr);
     }
 
     const now = new Date();
@@ -435,19 +440,22 @@ export default function App() {
       action: 'Gestión de Administrador',
       user: currentUser?.name || 'Marks',
       raffle: 'Plataforma',
-      detail: `Operador "${savedAdmin.name}" (${savedAdmin.email}) configurado. Estado: ${savedAdmin.status}.`,
+      detail: `Operador "${savedAdmin.name}" (${savedAdmin.email}) configurado. Estado: ${savedAdmin.status}.${password ? ' Contraseña actualizada.' : ''}`,
     };
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const handleDeleteAdmin = (adminId: string) => {
+  const handleDeleteAdmin = async (adminId: string) => {
     const target = admins.find(a => a.id === adminId);
     setAdmins(prev => prev.filter(a => a.id !== adminId));
 
-    if (target) {
-      const demoIdx = DEMO_AUTH_USERS.findIndex(u => u.email.toLowerCase() === target.email.toLowerCase());
-      if (demoIdx >= 0) DEMO_AUTH_USERS.splice(demoIdx, 1);
+    try {
+      await api.deleteAdmin(adminId);
+    } catch (apiErr) {
+      console.error('Error al eliminar admin en BD:', apiErr);
+    }
 
+    if (target) {
       const now = new Date();
       const dateStr = `${String(now.getDate()).padStart(2, '0')} Sep ${now.getFullYear()} · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const newLog: AuditLog = {

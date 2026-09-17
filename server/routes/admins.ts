@@ -101,13 +101,13 @@ router.put('/:id', requireSuperAdmin, async (req: AuthRequest, res: Response) =>
       status ? (status === 'activo' ? 'active' : 'inactive') : null,
     ];
 
-    if (password) {
-      const passwordHash = await bcrypt.hash(password, 10);
-      query += `, password_hash = $5 WHERE id = $6`;
-      params.push(passwordHash, id);
+    if (password && password.trim().length > 0) {
+      const passwordHash = await bcrypt.hash(password.trim(), 10);
+      query += `, password_hash = $5, must_change_password = false WHERE id = $6 OR dni = $7`;
+      params.push(passwordHash, id, dni ? dni.trim() : id);
     } else {
-      query += ` WHERE id = $5`;
-      params.push(id);
+      query += ` WHERE id = $5 OR dni = $6`;
+      params.push(id, dni ? dni.trim() : id);
     }
 
     await db.query(query, params);
