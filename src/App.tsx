@@ -808,6 +808,7 @@ export default function App() {
             }
           }}
           onUpdateTicket={handleUpdateTicket}
+          onResetPrizes={handleResetPrizes}
           onLogout={handleLogout}
         />
       )}
@@ -832,7 +833,7 @@ export default function App() {
       {currentView === 'live_draw' && currentUser && (
         <LiveDrawView
           raffle={activeRaffle}
-          tickets={raffleTickets.length > 0 ? raffleTickets : INITIAL_TICKETS}
+          tickets={raffleTickets.length > 0 ? raffleTickets : tickets.filter(t => t.isValid !== false)}
           prizes={prizes}
           initialPrizeId={selectedPrizeIdForDraw}
           onBack={() => setCurrentView(currentUser.role === 'super_admin' ? 'super_admin' : 'admin')}

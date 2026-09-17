@@ -31,7 +31,8 @@ import {
   Target,
   BarChart3,
   ArrowUpDown,
-  User
+  User,
+  RotateCcw
 } from 'lucide-react';
 import { Raffle, AdminUser, AuditLog, Ticket, Prize, AuthUser, SystemConfig } from '../types';
 import { PrizeManagementModal } from './PrizeManagementModal';
@@ -64,6 +65,7 @@ interface Props {
   personalQuota?: number;
   onUpdateCurrentUser?: (user: AuthUser) => void;
   onUpdateTicket?: (ticket: Ticket) => Promise<void> | void;
+  onResetPrizes?: (raffleId: string) => void;
   onLogout?: () => void;
 }
 
@@ -93,6 +95,7 @@ export const SuperAdminView: React.FC<Props> = ({
   personalQuota = 20,
   onUpdateCurrentUser,
   onUpdateTicket,
+  onResetPrizes,
   onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -1099,6 +1102,22 @@ export const SuperAdminView: React.FC<Props> = ({
                 </div>
 
                 <div className="flex items-center gap-2.5">
+                  {onResetPrizes && (
+                    <button
+                      id="superadmin-reset-prizes-btn"
+                      onClick={() => {
+                        if (window.confirm('⚠️ MODO PRUEBAS: ¿Deseas reiniciar la adjudicación de todos los premios para volver a sortearlos desde cero?')) {
+                          onResetPrizes(selectedRaffleId || 'rf-024');
+                        }
+                      }}
+                      className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      title="Reiniciar adjudicación de premios para volver a probar el sorteo"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Reiniciar Premios (Pruebas)</span>
+                    </button>
+                  )}
+
                   <button
                     id="add-new-prize-btn"
                     onClick={() => handleOpenAddPrize('rf-024')}

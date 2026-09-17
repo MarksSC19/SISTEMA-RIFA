@@ -75,14 +75,29 @@ export const LiveDrawView: React.FC<Props> = ({
 
   const animationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Set default winner or initial display basado en los tickets reales vendidos
+  // Sincronizar display con el premio activo y los tickets vendidos reales
   useEffect(() => {
-    const candidate = tickets[0] || null;
+    if (activePrize?.isDrawn) {
+      const winnerTicketId = activePrize.winnerTicketId || (activePrize as any).winnerTicket?.ticketNumber;
+      const found = tickets.find(t => t.id === winnerTicketId || t.formattedNumber === winnerTicketId);
+      if (found) {
+        setWinnerTicket(found);
+        const padded = String(found.number).padStart(3, '0').split('').join(' ');
+        setCurrentDisplayNumber(padded);
+        setDrawState('winner');
+        return;
+      }
+    }
+    setDrawState('idle');
+    setWinnerTicket(null);
+    const candidate = eligibleTickets[0] || tickets[0] || null;
     if (candidate) {
       const padded = String(candidate.number).padStart(3, '0').split('').join(' ');
       setCurrentDisplayNumber(padded);
+    } else {
+      setCurrentDisplayNumber('0 0 0');
     }
-  }, [tickets]);;
+  }, [selectedPrizeId, tickets.length, rafflePrizes]);
 
   // Clean timers on unmount
   useEffect(() => {
@@ -169,9 +184,11 @@ export const LiveDrawView: React.FC<Props> = ({
     const spinStep = () => {
       stepCount++;
 
-      // Pick a random number during spinning from the pool of sold tickets
-      const randomCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
-      const randomNum = randomCandidate ? randomCandidate.number : Math.floor(Math.random() * (raffle.totalTickets || 999)) + 1;
+      // Durante el giro, desfilan única y exclusivamente los números de tickets vendidos reales
+      const randomCandidate = eligibleTickets.length > 0 
+        ? eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)]
+        : null;
+      const randomNum = randomCandidate ? randomCandidate.number : (targetCandidate?.number || 1);
       const formattedRandom = String(randomNum).padStart(3, '0').split('').join(' ');
       setCurrentDisplayNumber(formattedRandom);
 
@@ -292,7 +309,27 @@ export const LiveDrawView: React.FC<Props> = ({
           <span>Volver al panel</span>
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {onResetPrizes && (
+            <button
+              id="live-draw-top-reset-btn"
+              onClick={() => {
+                if (window.confirm('⚠️ MODO PRUEBAS: ¿Deseas reiniciar todos los premios y sorteos para volver a probar desde cero?')) {
+                  onResetPrizes();
+                  const firstPrize = rafflePrizes[0];
+                  if (firstPrize) setSelectedPrizeId(firstPrize.id);
+                  setDrawState('idle');
+                  setWinnerTicket(null);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300 hover:text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-1.5 rounded-full border border-amber-500/30 transition-all cursor-pointer shadow-sm backdrop-blur-md"
+              title="Reiniciar todos los premios para pruebas"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Reiniciar Sorteos (Pruebas)</span>
+            </button>
+          )}
+
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 rounded-full text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer backdrop-blur-md"
