@@ -135,6 +135,15 @@ async function initDatabaseState() {
       );
       console.log('✓ Credenciales iniciales listas para pruebas.');
     }
+
+    // Asegurar actualización de datos del ticket #0023 en PostgreSQL
+    await db.query(`
+      UPDATE tickets 
+      SET buyer_name = 'VICTOR RAUL GAGO VARGAS', 
+          buyer_dni = '43908736' 
+      WHERE ticket_number = 23 OR ticket_code = 'TK-024-23-5861B2'
+    `);
+    console.log('✓ Boleto #0023 sincronizado en BD con VICTOR RAUL GAGO VARGAS (DNI: 43908736).');
   } catch (err) {
     console.error('Error en initDatabaseState:', err);
   }

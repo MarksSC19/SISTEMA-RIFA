@@ -80,7 +80,7 @@ router.get('/verify/:code', async (req: Request, res: Response) => {
         verificationCode: t.verificationCode,
         buyerName: t.buyerName,
         maskedBuyerName: maskedName,
-        dni: t.dni ? `${t.dni.slice(0, 2)}****${t.dni.slice(-2)}` : 'N/D',
+        dni: t.dni || 'N/D',
         rawDni: t.dni,
         raffleName: t.raffleName || 'Rifa Graduación Administración',
         registeredBy: t.registeredBy,

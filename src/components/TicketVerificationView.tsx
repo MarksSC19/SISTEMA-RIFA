@@ -133,6 +133,14 @@ export const TicketVerificationView: React.FC<Props> = ({
   isPublicView = false,
   onGoToLogin,
 }) => {
+  // Si la URL contiene parámetros de verificación pública, forzar SIEMPRE la vista limpia de participante
+  const isUrlPublic = typeof window !== 'undefined' && Boolean(
+    new URLSearchParams(window.location.search).get('verify') ||
+    new URLSearchParams(window.location.search).get('code') ||
+    new URLSearchParams(window.location.search).get('ticket')
+  );
+  const effectivePublicView = isPublicView || isUrlPublic;
+
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(ticket || null);
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -174,7 +182,7 @@ export const TicketVerificationView: React.FC<Props> = ({
               formattedNumber: t.formattedNumber,
               raffleId: 'rf-024',
               buyerName: t.buyerName,
-              dni: t.dni,
+              dni: t.rawDni || t.dni,
               phone: t.phone || '***-***-***',
               timestamp: String(t.timestamp || t.issuedAt || new Date().toISOString()),
               timeFormatted: formatPeruTime(t.timestamp || t.issuedAt),
@@ -396,7 +404,7 @@ export const TicketVerificationView: React.FC<Props> = ({
     <div id="verification-screen-container" className="min-h-screen bg-[#F5F5F3] text-[#0F1115] py-6 sm:py-8 px-4 flex flex-col items-center justify-between font-['Geist',sans-serif]">
       {/* Top Bar con Logo Oficial y Titularidad */}
       <div className="w-full max-w-xl flex items-center justify-between mb-4">
-        {isPublicView ? (
+        {effectivePublicView ? (
           <div className="flex items-center gap-2.5">
             <img src="/logo.png" alt="Logo Oficial" className="w-8 h-8 object-contain bg-white rounded-xl p-0.5 border border-slate-200 shadow-2xs" />
             <div>
@@ -668,7 +676,7 @@ export const TicketVerificationView: React.FC<Props> = ({
       </div>
 
       {/* Buscador manual por DNI o código - SOLO PARA ADMINISTRADORES, NUNCA EN VISTA PÚBLICA */}
-      {!isPublicView && (
+      {!effectivePublicView && (
         <div className="w-full max-w-xl mt-6">
           <form onSubmit={handleSearch} className="relative">
             <input
