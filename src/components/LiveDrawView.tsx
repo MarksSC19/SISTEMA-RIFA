@@ -11,16 +11,15 @@ import {
   Trophy, 
   Share2,
   ExternalLink,
-  Gift,
   ChevronDown,
   Sparkles,
   ArrowRight,
   RotateCcw,
   CheckCircle2,
-  Clock,
   Timer,
   AlertTriangle,
-  Eye
+  Eye,
+  Lock
 } from 'lucide-react';
 import { Raffle, Ticket, Prize } from '../types';
 import { soundFx } from '../utils/audioHelper';
@@ -84,9 +83,13 @@ export const LiveDrawView: React.FC<Props> = ({
     return 5; // 5 segundos por defecto
   });
 
+  // Modal de confirmación oficial antes del sorteo
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+
   // Draw states: 'idle' | 'spinning' | 'decelerating' | 'stopped' | 'winner'
   const [drawState, setDrawState] = useState<'idle' | 'spinning' | 'decelerating' | 'stopped' | 'winner'>('idle');
-  const [currentDisplayNumber, setCurrentDisplayNumber] = useState<string>('0 0 0 0');
+  // En reposo (idle) inicia siempre con guiones neutros, nunca con un número arbitrario
+  const [currentDisplayNumber, setCurrentDisplayNumber] = useState<string>('- - - -');
   const [currentCandidate, setCurrentCandidate] = useState<Ticket | null>(null);
   const [winnerTicket, setWinnerTicket] = useState<Ticket | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -111,7 +114,7 @@ export const LiveDrawView: React.FC<Props> = ({
     !wonTicketIds.has(String(t.number))
   );
 
-  // Sincronizar display inicial con el premio activo y boletos vendidos existentes
+  // Sincronizar display con el premio activo: si ya fue sorteado muestra su ganador; si está libre muestra guiones de espera
   useEffect(() => {
     if (activePrize?.isDrawn) {
       const winnerTicketId = activePrize.winnerTicketId || (activePrize as any).winnerTicket?.ticketNumber;
@@ -126,14 +129,9 @@ export const LiveDrawView: React.FC<Props> = ({
     }
     setDrawState('idle');
     setWinnerTicket(null);
-    const initialCandidate = eligibleTickets[0] || tickets[0] || null;
-    if (initialCandidate) {
-      setCurrentCandidate(initialCandidate);
-      setCurrentDisplayNumber(formatDisplayDigits(initialCandidate.number));
-    } else {
-      setCurrentCandidate(null);
-      setCurrentDisplayNumber('0 0 0 0');
-    }
+    setCurrentCandidate(null);
+    // En espera neutra, NO inventar números ni mostrar ningún boleto particular
+    setCurrentDisplayNumber('- - - -');
   }, [selectedPrizeId, tickets.length, rafflePrizes]);
 
   // Clean timers on unmount
@@ -232,10 +230,10 @@ export const LiveDrawView: React.FC<Props> = ({
         }
         animationTimerRef.current = setTimeout(runSpinStep, 45);
       } else if (elapsed < totalDurationMs - 120) {
-        // FASE 2: Desaceleración progresiva (disminuyendo velocidad gradualmente)
+        // FASE 2: Desaceleración progresiva
         setDrawState('decelerating');
         const decelProgress = (elapsed - fastDurationMs) / (totalDurationMs - fastDurationMs);
-        const delay = Math.round(55 + Math.pow(decelProgress, 2.2) * 450); // de 55ms hasta ~500ms
+        const delay = Math.round(55 + Math.pow(decelProgress, 2.2) * 450); // de 55ms a ~500ms
 
         const randomCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
         setCurrentDisplayNumber(formatDisplayDigits(randomCandidate.number));
@@ -287,11 +285,8 @@ export const LiveDrawView: React.FC<Props> = ({
       setSelectedPrizeId(nextPendingPrize.id);
       setDrawState('idle');
       setWinnerTicket(null);
-      const initialCandidate = eligibleTickets[0] || tickets[0] || null;
-      if (initialCandidate) {
-        setCurrentCandidate(initialCandidate);
-        setCurrentDisplayNumber(formatDisplayDigits(initialCandidate.number));
-      }
+      setCurrentCandidate(null);
+      setCurrentDisplayNumber('- - - -');
     }
   };
 
@@ -306,10 +301,10 @@ export const LiveDrawView: React.FC<Props> = ({
     return `${prize.order}° Lugar: ${cleanName}`;
   };
 
-  // Digits formatted for 4-drum tumbler cards (matching ticket formats #0001 to #0600)
-  const currentDigits = (currentDisplayNumber || '0 0 0 0')
+  // Digits formatted for 4-drum tumbler cards
+  const rawDigits = (currentDisplayNumber || '- - - -')
     .replace(/\s+/g, '')
-    .padStart(4, '0')
+    .padStart(4, '-')
     .slice(-4)
     .split('');
 
@@ -319,23 +314,18 @@ export const LiveDrawView: React.FC<Props> = ({
           THEATRICAL STAGE ATMOSPHERE & LIGHTING LAYERS
           ───────────────────────────────────────────────────────────── */}
       {/* 1. Top Spotlight Beam from ceiling */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[550px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/25 via-teal-500/10 to-transparent pointer-events-none blur-3xl" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[450px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/20 via-teal-500/10 to-transparent pointer-events-none blur-3xl" />
 
-      {/* 2. Left Ambient Aura (Deep Emerald) */}
-      <div className="absolute top-1/4 -left-48 w-[550px] h-[550px] bg-emerald-600/15 rounded-full blur-[130px] pointer-events-none" />
+      {/* 2. Ambient Auras */}
+      <div className="absolute top-1/4 -left-48 w-[450px] h-[450px] bg-emerald-600/15 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute top-1/3 -right-48 w-[450px] h-[450px] bg-cyan-600/15 rounded-full blur-[130px] pointer-events-none" />
 
-      {/* 3. Right Ambient Aura (Cyber Cyan) */}
-      <div className="absolute top-1/3 -right-48 w-[550px] h-[550px] bg-cyan-600/15 rounded-full blur-[130px] pointer-events-none" />
+      {/* 3. Center Stage Backlight */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[380px] bg-[radial-gradient(circle,_var(--tw-gradient-stops))] from-emerald-500/15 via-slate-800/20 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-      {/* 4. Center Stage Backlight behind the Tumblers */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] sm:w-[900px] h-[450px] bg-[radial-gradient(circle,_var(--tw-gradient-stops))] from-emerald-500/15 via-slate-800/25 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-      {/* 5. Bottom Stage Floor Rim Glow */}
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[1000px] h-[280px] bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-emerald-500/20 via-teal-900/15 to-transparent pointer-events-none blur-3xl" />
-
-      {/* 6. Subtle Geometric Tech Grid */}
+      {/* 4. Subtle Geometric Tech Grid */}
       <div 
-        className="absolute inset-0 pointer-events-none opacity-[0.05]"
+        className="absolute inset-0 pointer-events-none opacity-[0.04]"
         style={{
           backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
           backgroundSize: '32px 32px',
@@ -345,7 +335,7 @@ export const LiveDrawView: React.FC<Props> = ({
       />
 
       {/* Top minimal control bar */}
-      <div className="w-full px-6 py-4 flex items-center justify-between relative z-20">
+      <div className="w-full px-6 py-3.5 flex items-center justify-between relative z-20">
         <button
           id="live-draw-back-btn"
           onClick={onBack}
@@ -355,27 +345,7 @@ export const LiveDrawView: React.FC<Props> = ({
           <span>Volver al panel</span>
         </button>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          {onResetPrizes && (
-            <button
-              id="live-draw-top-reset-btn"
-              onClick={() => {
-                if (window.confirm('⚠️ MODO PRUEBAS: ¿Deseas reiniciar todos los premios y sorteos para volver a probar desde cero?')) {
-                  onResetPrizes();
-                  const firstPrize = rafflePrizes[0];
-                  if (firstPrize) setSelectedPrizeId(firstPrize.id);
-                  setDrawState('idle');
-                  setWinnerTicket(null);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300 hover:text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-1.5 rounded-full border border-amber-500/30 transition-all cursor-pointer shadow-sm backdrop-blur-md"
-              title="Reiniciar todos los premios para pruebas"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span>Reiniciar Sorteos (Pruebas)</span>
-            </button>
-          )}
-
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 rounded-full text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer backdrop-blur-md"
@@ -384,70 +354,64 @@ export const LiveDrawView: React.FC<Props> = ({
             {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-gray-500" />}
           </button>
 
-          <span className="text-[11px] font-mono tracking-widest text-emerald-400 bg-emerald-500/15 px-3 py-1.5 rounded-full border border-emerald-500/30 uppercase font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-md">
-            CERTIFICADO EN VIVO · CSPRNG
+          <span className="text-[11px] font-mono tracking-widest text-emerald-400 bg-emerald-500/15 px-3 py-1.5 rounded-full border border-emerald-500/30 uppercase font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-md flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>CERTIFICADO EN VIVO · CSPRNG</span>
           </span>
         </div>
       </div>
 
       {/* Main Sorteo Area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-2 max-w-4xl mx-auto w-full text-center relative z-10">
-        {/* PRIZE SELECTION MODULE & SUPERADMIN DURATION CONTROLS (Top bar during idle) */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-1 max-w-4xl mx-auto w-full text-center relative z-10">
+        {/* PRIZE SELECTION MODULE & SUPERADMIN DURATION CONTROLS (Top compact bar during idle) */}
         {rafflePrizes.length > 0 && drawState === 'idle' && (
           <motion.div 
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-xl mb-4 bg-[#121622]/90 border border-white/15 rounded-2xl p-4 shadow-[0_15px_35px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+            className="w-full max-w-2xl mb-2 bg-[#121622]/90 border border-white/15 rounded-2xl p-3.5 shadow-[0_12px_30px_rgba(0,0,0,0.55)] backdrop-blur-xl"
           >
-            <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-[11px] font-bold text-gray-200 uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                <Trophy className="w-3.5 h-3.5 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
-                <span>PREMIO EN DISPUTA:</span>
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/30 font-semibold shadow-xs">
-                  {rafflePrizes.filter(p => p.isDrawn).length} de {rafflePrizes.length} sorteados
+            {/* Fila 1: Premio en disputa + badges de estado */}
+            <div className="flex items-center justify-between gap-3 mb-2.5">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Trophy className="w-4 h-4 text-amber-400 shrink-0 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
+                <span className="text-[11px] font-bold text-gray-300 uppercase tracking-wider font-mono shrink-0">
+                  PREMIO:
                 </span>
-                <span className="text-[11px] font-mono text-cyan-300 bg-cyan-500/15 px-2.5 py-0.5 rounded-full border border-cyan-500/30 font-semibold">
+                <div className="relative flex-1 min-w-0">
+                  <select
+                    id="live-draw-prize-select"
+                    value={activePrize?.id || ''}
+                    onChange={(e) => setSelectedPrizeId(e.target.value)}
+                    className="w-full pl-3 pr-8 py-1.5 bg-[#0A0D14]/90 border border-white/15 text-white rounded-lg text-xs font-semibold focus:outline-none focus:border-emerald-500 cursor-pointer appearance-none truncate"
+                  >
+                    {rafflePrizes.map((p) => (
+                      <option key={p.id} value={p.id} className="bg-[#0A0D14] text-white py-1">
+                        {getPrizeFullLabel(p)} {p.isDrawn ? '✓ (SORTEADO)' : '• (PENDIENTE)'}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30 font-semibold">
+                  {rafflePrizes.filter(p => p.isDrawn).length}/{rafflePrizes.length} sorteados
+                </span>
+                <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-md border border-cyan-500/30 font-semibold">
                   {eligibleTickets.length} boletos en juego
                 </span>
               </div>
             </div>
 
-            <div className="relative">
-              <select
-                id="live-draw-prize-select"
-                value={activePrize?.id || ''}
-                onChange={(e) => setSelectedPrizeId(e.target.value)}
-                className="w-full pl-4 pr-10 py-2.5 bg-[#0A0D14]/90 border border-white/15 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 cursor-pointer appearance-none shadow-inner"
-              >
-                {rafflePrizes.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#0A0D14] text-white py-1">
-                    {getPrizeFullLabel(p)} {p.isDrawn ? '✓ (SORTEADO)' : '• (PENDIENTE)'}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-
-            {/* SUPERADMIN OPTION: SELECTOR DE TIEMPO DE GIRO DE LA RULETA */}
-            <div className="mt-3 pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2 self-start sm:self-center">
-                <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                  <Timer className="w-3.5 h-3.5" />
-                </div>
-                <div className="text-left">
-                  <span className="text-[11px] font-bold text-gray-200 block">
-                    Tiempo de Giro de Ruleta:
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    Duración del suspenso antes de frenar en el ganador
-                  </span>
-                </div>
+            {/* Fila 2: Selector de tiempo de giro limpio y horizontal */}
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-gray-300 font-semibold shrink-0">
+                <Timer className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-[11px] font-medium text-gray-300">Duración de Giro:</span>
               </div>
 
-              {/* Botones de selección de duración */}
-              <div className="flex items-center gap-1.5 bg-[#0A0D14] p-1 rounded-xl border border-white/10 shrink-0">
+              <div className="flex items-center gap-1 bg-[#0A0D14] p-0.5 rounded-lg border border-white/10">
                 {[
                   { secs: 3, label: '3s', desc: 'Rápido' },
                   { secs: 5, label: '5s', desc: 'Normal' },
@@ -462,41 +426,32 @@ export const LiveDrawView: React.FC<Props> = ({
                       setSpinDuration(secs);
                       try { localStorage.setItem('rifas_spin_duration', String(secs)); } catch {}
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-1 cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1 ${
                       spinDuration === secs
-                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.5)] scale-105'
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)] scale-105'
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
-                    title={`Duración: ${secs} segundos (${desc})`}
+                    title={`Duración: ${secs}s (${desc})`}
                   >
                     <span>{label}</span>
-                    <span className="text-[9px] opacity-70 hidden md:inline">({desc})</span>
+                    <span className="text-[9px] opacity-70 hidden sm:inline">({desc})</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {activePrize && (
-              <div className="mt-2.5 text-left px-3 py-2 bg-white/[0.03] border border-white/5 rounded-xl text-xs flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  {activePrize.category && (
-                    <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded shrink-0">
-                      {activePrize.category}
-                    </span>
-                  )}
-                  <span className="text-gray-300 text-[11px] line-clamp-1">
-                    {activePrize.description || 'Premio estelar oficial'}
-                  </span>
-                </div>
+            {activePrize?.description && (
+              <div className="mt-2 text-left px-2.5 py-1 bg-white/[0.02] border border-white/5 rounded-lg text-[11px] text-gray-400 flex items-center justify-between truncate">
+                <span className="truncate">{activePrize.description}</span>
                 {activePrize.link && (
                   <a
                     href={activePrize.link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-emerald-300 hover:text-emerald-200 inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-500/20 hover:bg-emerald-500/30 px-2.5 py-1 rounded-lg border border-emerald-500/40 transition-colors shrink-0 shadow-xs"
+                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[10px] font-medium ml-2 shrink-0 underline"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    <span>Ver enlace oficial</span>
+                    <span>Ver enlace</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 )}
               </div>
@@ -514,47 +469,47 @@ export const LiveDrawView: React.FC<Props> = ({
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full space-y-4"
+              className="w-full space-y-3"
             >
               {/* Header: GRAN RIFA / SORTEO EN VIVO */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <h2 className="text-xs md:text-sm font-semibold tracking-widest text-emerald-400/90 uppercase font-mono drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">
                   {raffle.title}
                 </h2>
-                <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white uppercase drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+                <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white uppercase drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]">
                   SORTEO EN VIVO
                 </h1>
 
                 {/* Banner Premio Activo: visible durante el sorteo */}
                 {activePrize && drawState !== 'idle' ? (
-                  <div className="inline-flex items-center gap-2 px-5 py-2 bg-emerald-500/20 border border-emerald-400/30 rounded-full text-emerald-300 text-xs font-bold uppercase tracking-wider shadow-[0_0_25px_rgba(16,185,129,0.25)] backdrop-blur-md">
-                    <Trophy className="w-4 h-4 text-amber-400 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-500/20 border border-emerald-400/30 rounded-full text-emerald-300 text-xs font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(16,185,129,0.2)] backdrop-blur-md">
+                    <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
                     <span>EN DISPUTA: {getPrizeFullLabel(activePrize)}</span>
                   </div>
                 ) : null}
               </div>
 
               {/* Central Tumbling Display: Digit Cards sobre Podio Iluminado */}
-              <div className="py-3 my-1 relative">
+              <div className="py-2 my-1 relative">
                 {/* Luminous Floor Podium Halo directly beneath the digit cards */}
-                <div className={`absolute -bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-[600px] h-16 rounded-full blur-2xl pointer-events-none transition-all duration-300 ${
+                <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 w-[85%] max-w-[500px] h-14 rounded-full blur-2xl pointer-events-none transition-all duration-300 ${
                   drawState === 'stopped' 
                     ? 'bg-amber-400/40 scale-125' 
-                    : 'bg-emerald-500/30'
+                    : 'bg-emerald-500/25'
                 }`} />
 
-                <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-5 relative z-10">
-                  {currentDigits.map((digit, idx) => (
+                <div className="flex items-center justify-center gap-2 sm:gap-3 md:gap-4 relative z-10">
+                  {rawDigits.map((digit, idx) => (
                     <div
                       key={idx}
-                      className={`relative w-16 sm:w-24 md:w-32 h-24 sm:h-32 md:h-40 rounded-2xl md:rounded-3xl flex items-center justify-center bg-gradient-to-b from-[#1C2230] via-[#121622] to-[#0A0D14] border-2 ${
+                      className={`relative w-14 sm:w-20 md:w-28 h-20 sm:h-28 md:h-36 rounded-2xl flex items-center justify-center bg-gradient-to-b from-[#1C2230] via-[#121622] to-[#0A0D14] border-2 ${
                         drawState === 'stopped'
-                          ? 'border-amber-400 shadow-[0_0_60px_rgba(251,191,36,0.8)] scale-110 bg-gradient-to-b from-[#2A2415] via-[#1A1812] to-[#0A0D14]'
+                          ? 'border-amber-400 shadow-[0_0_50px_rgba(251,191,36,0.8)] scale-110 bg-gradient-to-b from-[#2A2415] via-[#1A1812] to-[#0A0D14]'
                           : drawState === 'spinning'
-                          ? 'border-emerald-400 shadow-[0_0_50px_rgba(16,185,129,0.5)] scale-105'
+                          ? 'border-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.5)] scale-105'
                           : drawState === 'decelerating'
-                          ? 'border-amber-400/80 shadow-[0_0_40px_rgba(251,191,36,0.4)] scale-102'
-                          : 'border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.2)]'
+                          ? 'border-amber-400/80 shadow-[0_0_35px_rgba(251,191,36,0.4)] scale-102'
+                          : 'border-white/15 shadow-[0_15px_35px_rgba(0,0,0,0.9)]'
                       } overflow-hidden transition-all duration-200 select-none`}
                     >
                       {/* Glossy top glass highlight */}
@@ -563,13 +518,15 @@ export const LiveDrawView: React.FC<Props> = ({
                       <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-black/70 border-b border-white/10 pointer-events-none" />
                       
                       {/* Numerals with high-impact glow */}
-                      <span className={`font-mono text-4xl sm:text-5xl md:text-7xl font-black ${
+                      <span className={`font-mono text-3xl sm:text-4xl md:text-6xl font-black ${
                         drawState === 'stopped'
                           ? 'text-amber-300 drop-shadow-[0_0_40px_rgba(251,191,36,0.9)] animate-pulse'
                           : drawState === 'spinning'
                           ? 'text-emerald-300 drop-shadow-[0_0_40px_rgba(16,185,129,0.85)]'
                           : drawState === 'decelerating'
                           ? 'text-amber-200 drop-shadow-[0_0_30px_rgba(251,191,36,0.7)]'
+                          : digit === '-'
+                          ? 'text-white/25 font-light'
                           : 'text-white drop-shadow-[0_6px_18px_rgba(0,0,0,0.9)]'
                       }`}>
                         {digit}
@@ -579,26 +536,26 @@ export const LiveDrawView: React.FC<Props> = ({
                 </div>
 
                 {/* Status bar y participante real pasando */}
-                <div className="mt-4 text-xs font-mono tracking-widest uppercase">
+                <div className="mt-3 text-xs font-mono tracking-widest uppercase">
                   {drawState === 'stopped' ? (
-                    <div className="space-y-1.5 animate-bounce">
-                      <div className="inline-flex items-center gap-2 px-5 py-2 bg-amber-400/20 border border-amber-400/40 rounded-full text-amber-300 font-extrabold text-sm shadow-[0_0_25px_rgba(251,191,36,0.5)]">
+                    <div className="space-y-1 animate-bounce">
+                      <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-400/20 border border-amber-400/40 rounded-full text-amber-300 font-extrabold text-xs sm:text-sm shadow-[0_0_20px_rgba(251,191,36,0.5)]">
                         <Trophy className="w-4 h-4 text-amber-400" />
-                        <span>¡BOLETO GANADOR #{winnerTicket ? formatTicketNumber(winnerTicket.number) : currentDigits.join('')}!</span>
+                        <span>¡BOLETO GANADOR #{winnerTicket ? formatTicketNumber(winnerTicket.number) : rawDigits.join('')}!</span>
                       </div>
                       {currentCandidate && (
-                        <p className="text-xs text-gray-200 font-bold tracking-normal normal-case">
+                        <p className="text-[11px] text-gray-200 font-bold tracking-normal normal-case">
                           Participante: <span className="text-white underline">{currentCandidate.buyerName}</span> (DNI {currentCandidate.dni})
                         </p>
                       )}
                     </div>
                   ) : drawState === 'spinning' ? (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       <span className="text-emerald-400 animate-pulse font-bold drop-shadow-[0_0_10px_rgba(16,185,129,0.5)] block">
-                        ── MEZCLANDO EXCLUSIVAMENTE BOLETOS VENDIDOS EXISTENTES ──
+                        ── MEZCLANDO BOLETOS VENDIDOS EXISTENTES ──
                       </span>
                       {currentCandidate && (
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[11px] text-gray-300 tracking-normal normal-case">
+                        <div className="inline-flex items-center gap-2 px-3 py-0.5 bg-white/5 rounded-full border border-white/10 text-[11px] text-gray-300 tracking-normal normal-case">
                           <span className="font-mono text-emerald-400 font-bold">#{formatTicketNumber(currentCandidate.number)}</span>
                           <span className="text-gray-400">·</span>
                           <span className="truncate max-w-[260px] text-white font-medium">{currentCandidate.buyerName}</span>
@@ -606,12 +563,12 @@ export const LiveDrawView: React.FC<Props> = ({
                       )}
                     </div>
                   ) : drawState === 'decelerating' ? (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       <span className="text-amber-400 font-bold animate-pulse drop-shadow-[0_0_10px_rgba(251,191,36,0.5)] block">
                         ── FRENANDO EN EL GANADOR OFICIAL ──
                       </span>
                       {currentCandidate && (
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 rounded-full border border-amber-500/30 text-[11px] text-amber-200 tracking-normal normal-case">
+                        <div className="inline-flex items-center gap-2 px-3 py-0.5 bg-amber-500/10 rounded-full border border-amber-500/30 text-[11px] text-amber-200 tracking-normal normal-case">
                           <span className="font-mono font-bold">#{formatTicketNumber(currentCandidate.number)}</span>
                           <span>·</span>
                           <span className="truncate max-w-[260px] font-medium">{currentCandidate.buyerName}</span>
@@ -619,11 +576,11 @@ export const LiveDrawView: React.FC<Props> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-1">
-                      <span className="text-emerald-400/90 font-mono font-semibold block">
-                        ── SISTEMA CSPRNG LISTO · TIEMPO PROGRAMADO: {spinDuration} SEGUNDOS ──
+                    <div className="space-y-0.5">
+                      <span className="text-emerald-400/90 font-mono font-semibold block text-[11px]">
+                        ── SISTEMA OFICIAL CSPRNG · LISTO PARA EL SORTEO EN VIVO ──
                       </span>
-                      <span className="text-[11px] text-gray-400 font-sans tracking-normal normal-case">
+                      <span className="text-[10px] text-gray-400 font-sans tracking-normal normal-case">
                         {eligibleTickets.length > 0 
                           ? `Participan únicamente los ${eligibleTickets.length} boletos válidos vendidos de la rifa.`
                           : 'No hay boletos vendidos disponibles para este sorteo.'}
@@ -633,11 +590,11 @@ export const LiveDrawView: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Action: Iniciar sorteo */}
-              <div className="pt-2">
+              {/* Action: Iniciar sorteo con botón y modal oficial */}
+              <div className="pt-1">
                 {drawState === 'idle' ? (
                   eligibleTickets.length === 0 ? (
-                    <div className="p-3.5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-center space-y-1 max-w-md mx-auto">
+                    <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-center space-y-0.5 max-w-md mx-auto">
                       <div className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center justify-center gap-1.5">
                         <AlertTriangle className="w-4 h-4 text-rose-400" />
                         <span>Sin boletos vendidos disponibles</span>
@@ -649,16 +606,16 @@ export const LiveDrawView: React.FC<Props> = ({
                   ) : (
                     <button
                       id="start-live-draw-trigger-btn"
-                      onClick={startDraw}
-                      className="relative group px-12 sm:px-16 py-4 sm:py-5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm sm:text-base tracking-widest uppercase rounded-2xl shadow-[0_0_40px_rgba(16,185,129,0.5)] hover:shadow-[0_0_60px_rgba(16,185,129,0.8)] hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 mx-auto border border-emerald-300/40"
+                      onClick={() => setIsConfirmModalOpen(true)}
+                      className="relative group px-10 sm:px-14 py-3 sm:py-3.5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-xs sm:text-sm tracking-widest uppercase rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_45px_rgba(16,185,129,0.7)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center justify-center gap-2.5 mx-auto border border-emerald-300/40"
                     >
-                      <Sparkles className="w-5 h-5 text-emerald-100 animate-pulse" />
-                      <span>INICIAR SORTEO ({spinDuration}s)</span>
-                      <Sparkles className="w-5 h-5 text-emerald-100 animate-pulse" />
+                      <Trophy className="w-4 h-4 text-amber-300 animate-pulse" />
+                      <span>EJECUTAR SORTEO OFICIAL ({spinDuration}s)</span>
+                      <Sparkles className="w-4 h-4 text-emerald-100 animate-pulse" />
                     </button>
                   )
                 ) : (
-                  <div className="h-14 flex items-center justify-center">
+                  <div className="h-10 flex items-center justify-center">
                     <span className="text-xs font-mono text-emerald-300 animate-pulse font-bold drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">
                       {drawState === 'stopped' ? '¡Adjudicando premio oficial...!' : `Girando ruleta (${spinDuration}s)...`}
                     </span>
@@ -677,7 +634,7 @@ export const LiveDrawView: React.FC<Props> = ({
               transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
               className="relative w-full max-w-lg mx-auto my-auto"
             >
-              {/* Single Ambient Radial Aura */}
+              {/* Ambient Radial Aura */}
               <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/25 via-teal-400/20 to-emerald-500/25 rounded-3xl blur-xl pointer-events-none" />
 
               {/* Single Unified Card Surface */}
@@ -701,7 +658,7 @@ export const LiveDrawView: React.FC<Props> = ({
                     NÚMERO DE TICKET GANADOR
                   </span>
                   <div className="text-5xl sm:text-6xl font-black font-['JetBrains_Mono'] tracking-tight text-white my-1 drop-shadow-[0_0_20px_rgba(16,185,129,0.35)]">
-                    {winnerTicket ? `#${formatTicketNumber(winnerTicket.number)}` : `#${currentDigits.join('')}`}
+                    {winnerTicket ? `#${formatTicketNumber(winnerTicket.number)}` : `#${rawDigits.join('')}`}
                   </div>
                   <div className="text-lg font-bold text-white">
                     {winnerTicket?.buyerName || (currentCandidate?.buyerName ?? 'Ganador Oficial')}
@@ -785,22 +742,6 @@ export const LiveDrawView: React.FC<Props> = ({
                       <p className="text-[11px] text-gray-300">
                         Se completó oficialmente el sorteo de todos los premios de la rifa.
                       </p>
-                      {onResetPrizes && (
-                        <button
-                          id="reset-all-draws-btn"
-                          onClick={() => {
-                            onResetPrizes();
-                            const firstPrize = rafflePrizes[0];
-                            if (firstPrize) setSelectedPrizeId(firstPrize.id);
-                            setDrawState('idle');
-                            setWinnerTicket(null);
-                          }}
-                          className="w-full py-2.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Reiniciar sorteos para volver a jugar</span>
-                        </button>
-                      )}
                     </div>
                   ) : null}
 
@@ -830,11 +771,11 @@ export const LiveDrawView: React.FC<Props> = ({
 
                     <button
                       id="re-draw-btn"
-                      onClick={startDraw}
+                      onClick={() => setIsConfirmModalOpen(true)}
                       className="flex-1 py-2.5 px-3 bg-white/10 hover:bg-white/15 text-white border border-white/10 font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5 text-gray-300" />
-                      <span>Repetir sorteo</span>
+                      <span>Re-sortear premio</span>
                     </button>
                   </div>
                 </div>
@@ -845,10 +786,103 @@ export const LiveDrawView: React.FC<Props> = ({
       </div>
 
       {/* Footer minimalista */}
-      <div className="w-full px-6 sm:px-10 py-3.5 flex items-center justify-between text-[10px] sm:text-xs font-mono text-gray-500/80 border-t border-white/5 relative z-20 shrink-0 pointer-events-none">
+      <div className="w-full px-6 sm:px-10 py-2.5 flex items-center justify-between text-[10px] font-mono text-gray-500/80 border-t border-white/5 relative z-20 shrink-0 pointer-events-none">
         <span className="hidden sm:inline">RIFAS CRYPTOGRAPHIC LIVE ENGINE · BOLETOS VENDIDOS 100% AUDITADOS</span>
         <span className="mx-auto sm:mx-0 text-center sm:text-right">TOKEN SHA-256 · DURACIÓN {spinDuration}S</span>
       </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL DE CONFIRMACIÓN OFICIAL DE SORTEO
+          ───────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {isConfirmModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 10 }}
+              className="relative w-full max-w-md bg-[#0F131C] border border-emerald-500/40 rounded-3xl p-6 shadow-[0_25px_70px_rgba(0,0,0,0.95)] overflow-hidden text-left"
+            >
+              {/* Glow de fondo */}
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-400" />
+              <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Encabezado del Modal */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner shrink-0">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white uppercase tracking-tight">
+                    Confirmación de Sorteo Oficial
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    Protocolo Criptográfico CSPRNG Auditado
+                  </p>
+                </div>
+              </div>
+
+              {/* Detalles del Sorteo */}
+              <div className="space-y-2.5 bg-white/[0.03] border border-white/10 rounded-2xl p-4 my-4 text-xs font-mono">
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-gray-400">Premio a adjudicar:</span>
+                  <span className="text-emerald-300 font-bold text-right truncate max-w-[200px]">
+                    {getPrizeFullLabel(activePrize)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-gray-400">Boletos participantes:</span>
+                  <span className="text-cyan-300 font-bold">
+                    {eligibleTickets.length} boletos válidos
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-gray-400">Tiempo de giro programado:</span>
+                  <span className="text-amber-300 font-bold">
+                    {spinDuration} segundos
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-gray-400">Validez del acto:</span>
+                  <span className="text-emerald-400 font-bold">
+                    OFICIAL E IRREVOCABLE
+                  </span>
+                </div>
+              </div>
+
+              {/* Advertencia Solemne */}
+              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl mb-5 text-[11px] text-amber-200/90 leading-relaxed">
+                ⚠️ <strong>Aviso Oficial:</strong> Al confirmar, la ruleta se ejecutará en vivo y el ganador quedará registrado de forma definitiva en la base de datos de la plataforma.
+              </div>
+
+              {/* Botones de acción */}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmModalOpen(false)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsConfirmModalOpen(false);
+                    startDraw();
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 hover:shadow-emerald-500/50 transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-400/40"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirmar y Sortear</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
