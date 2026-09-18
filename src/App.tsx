@@ -843,7 +843,7 @@ export default function App() {
       {currentView === 'live_draw' && currentUser && (
         <LiveDrawView
           raffle={activeRaffle}
-          tickets={raffleTickets.length > 0 ? raffleTickets : tickets.filter(t => t.isValid !== false)}
+          tickets={tickets.filter(t => (t.raffleId === activeRaffle?.id || t.raffleId === 'rf-024' || !t.raffleId) && t.status !== 'anulado' && t.isValid !== false)}
           prizes={prizes}
           initialPrizeId={selectedPrizeIdForDraw}
           onBack={() => setCurrentView(currentUser.role === 'super_admin' ? 'super_admin' : 'admin')}
