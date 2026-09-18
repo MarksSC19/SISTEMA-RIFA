@@ -1007,6 +1007,20 @@ export const SuperAdminView: React.FC<Props> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {onResetPrizes && prizes.some(p => p.isDrawn) && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('⚠️ MODO PRUEBAS / REENSAYO:\n¿Deseas reiniciar el estado de todos los premios para volver a probar el sorteo desde cero?\n(Esto liberará los premios para que puedas sortearlos de nuevo)')) {
+                              onResetPrizes(currentRaffle?.id || 'rf-024');
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                          title="Reiniciar ganadores de premios para volver a ensayar"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Reiniciar Sorteos (Pruebas)</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => setActiveTab('premios')}
                         className="px-3 py-1.5 text-xs font-medium text-[#4B5563] hover:text-[#0F1115] bg-[#F5F5F3] hover:bg-[#E5E7EB] rounded-xl transition-colors cursor-pointer"

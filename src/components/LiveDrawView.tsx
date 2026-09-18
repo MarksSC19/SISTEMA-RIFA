@@ -86,6 +86,10 @@ export const LiveDrawView: React.FC<Props> = ({
   // Modal de confirmación oficial antes del sorteo
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
+  // Modo de ejecución: 'oficial' (asienta en BD) o 'prueba' (simulacro sin alterar BD)
+  const [drawExecutionMode, setDrawExecutionMode] = useState<'oficial' | 'prueba'>('oficial');
+  const [isLastDrawTest, setIsLastDrawTest] = useState(false);
+
   // Draw states: 'idle' | 'spinning' | 'decelerating' | 'stopped' | 'winner'
   const [drawState, setDrawState] = useState<'idle' | 'spinning' | 'decelerating' | 'stopped' | 'winner'>('idle');
   // En reposo (idle) inicia siempre con guiones neutros, nunca con un número arbitrario
@@ -123,6 +127,7 @@ export const LiveDrawView: React.FC<Props> = ({
         setWinnerTicket(found);
         setCurrentCandidate(found);
         setCurrentDisplayNumber(formatDisplayDigits(found.number));
+        setIsLastDrawTest(false);
         setDrawState('winner');
         return;
       }
@@ -130,6 +135,7 @@ export const LiveDrawView: React.FC<Props> = ({
     setDrawState('idle');
     setWinnerTicket(null);
     setCurrentCandidate(null);
+    setIsLastDrawTest(false);
     // En espera neutra, NO inventar números ni mostrar ningún boleto particular
     setCurrentDisplayNumber('- - - -');
   }, [selectedPrizeId, tickets.length, rafflePrizes]);
@@ -156,7 +162,7 @@ export const LiveDrawView: React.FC<Props> = ({
     }
   };
 
-  const startDraw = async () => {
+  const startDraw = async (mode: 'oficial' | 'prueba' = drawExecutionMode) => {
     if (eligibleTickets.length === 0) {
       alert('⚠️ No hay boletos vendidos disponibles para sortear este premio. Todos los boletos han sido premiados o no se han registrado ventas.');
       return;
@@ -165,41 +171,49 @@ export const LiveDrawView: React.FC<Props> = ({
     if (animationTimerRef.current) clearTimeout(animationTimerRef.current);
     if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current);
 
+    const isTest = mode === 'prueba';
+    setIsLastDrawTest(isTest);
     setDrawState('spinning');
     setWinnerTicket(null);
 
-    // 1. Obtener ganador oficial desde PostgreSQL o de los tickets elegibles existentes
+    // 1. Obtener ganador: si es oficial llama al backend CSPRNG; si es prueba selecciona de boletos reales sin alterar BD
     let targetCandidate: Ticket;
-    try {
-      if (activePrize) {
-        const res = await api.executeDraw(activePrize.id, true);
-        if (res?.winner) {
-          const found = eligibleTickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number) ||
-                        tickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number);
-          targetCandidate = found || {
-            id: res.winner.ticketId,
-            raffleId: raffle.id,
-            number: res.winner.number,
-            formattedNumber: res.winner.formattedNumber || `#${formatTicketNumber(res.winner.number)}`,
-            verificationCode: res.winner.verificationCode,
-            buyerName: res.winner.buyerName,
-            dni: res.winner.dni,
-            phone: res.winner.phone,
-            status: 'pagado',
-            isValid: true,
-            purchaseDate: new Date().toISOString(),
-            registeredBy: res.winner.registeredBy || 'Administrador Oficial',
-            paymentMethod: 'yape',
-          };
+    if (isTest) {
+      // En modo prueba: selección aleatoria de boletos vendidos reales sin invocar endpoint ni bloquear premio
+      targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+    } else {
+      // En modo oficial: llamada oficial a PostgreSQL
+      try {
+        if (activePrize) {
+          const res = await api.executeDraw(activePrize.id, true);
+          if (res?.winner) {
+            const found = eligibleTickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number) ||
+                          tickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number);
+            targetCandidate = found || {
+              id: res.winner.ticketId,
+              raffleId: raffle.id,
+              number: res.winner.number,
+              formattedNumber: res.winner.formattedNumber || `#${formatTicketNumber(res.winner.number)}`,
+              verificationCode: res.winner.verificationCode,
+              buyerName: res.winner.buyerName,
+              dni: res.winner.dni,
+              phone: res.winner.phone,
+              status: 'pagado',
+              isValid: true,
+              purchaseDate: new Date().toISOString(),
+              registeredBy: res.winner.registeredBy || 'Administrador Oficial',
+              paymentMethod: 'yape',
+            };
+          } else {
+            targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+          }
         } else {
           targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
         }
-      } else {
+      } catch (err) {
+        console.warn('[LiveDraw] Ejecutando sorteo sobre tickets reales vendidos en memoria:', err);
         targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
       }
-    } catch (err) {
-      console.warn('[LiveDraw] Ejecutando sorteo sobre tickets reales vendidos en memoria:', err);
-      targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
     }
 
     if (!targetCandidate && eligibleTickets.length > 0) {
@@ -210,7 +224,7 @@ export const LiveDrawView: React.FC<Props> = ({
     const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
     setDrawTimestamp(`${dateStr} · ${timeStr}`);
-    setDrawId(`DRAW-${raffle.code.replace('#', '')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`);
+    setDrawId(isTest ? `TEST-SIM-${Math.random().toString(36).substring(2, 6).toUpperCase()}` : `DRAW-${raffle.code.replace('#', '')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`);
 
     // Configuración de tiempos de animación según la duración seleccionada por el Superadmin
     const totalDurationMs = spinDuration * 1000;
@@ -259,7 +273,8 @@ export const LiveDrawView: React.FC<Props> = ({
         // Tras 2.2 segundos con los tambores celebrando el número exacto, mostrar la tarjeta de proclamación
         stopTimeoutRef.current = setTimeout(() => {
           setDrawState('winner');
-          if (onWinnerSelected) {
+          // Solo si es sorteo oficial, notificar la adjudicación en base de datos
+          if (!isTest && onWinnerSelected) {
             onWinnerSelected(targetCandidate, activePrize);
           }
         }, 2200);
@@ -641,13 +656,21 @@ export const LiveDrawView: React.FC<Props> = ({
               <div className="relative bg-[#0F131C] border border-emerald-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.9)] backdrop-blur-xl">
                 {/* Trophy & Prize Header */}
                 <div className="flex flex-col items-center text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-b from-amber-400/20 to-amber-500/10 border border-amber-400/40 flex items-center justify-center mb-2 shadow-md shadow-amber-500/10">
-                    <Trophy className="w-6 h-6 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 shadow-md ${
+                    isLastDrawTest 
+                      ? 'bg-amber-500/20 border border-amber-400/40 shadow-amber-500/10'
+                      : 'bg-gradient-to-b from-amber-400/20 to-amber-500/10 border border-amber-400/40 shadow-amber-500/10'
+                  }`}>
+                    <Trophy className={`w-6 h-6 ${isLastDrawTest ? 'text-amber-300' : 'text-amber-400'} drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]`} />
                   </div>
-                  <span className="text-[10px] font-mono font-bold tracking-widest text-emerald-400 uppercase">
-                    PREMIO ADJUDICADO OFICIALMENTE
+                  <span className={`text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-0.5 rounded-full ${
+                    isLastDrawTest
+                      ? 'text-amber-300 bg-amber-500/20 border border-amber-500/30'
+                      : 'text-emerald-400 bg-emerald-500/15 border border-emerald-500/30'
+                  }`}>
+                    {isLastDrawTest ? '🧪 SIMULACRO DE PRUEBA (EL PREMIO SIGUE LIBRE)' : 'PREMIO ADJUDICADO OFICIALMENTE'}
                   </span>
-                  <h2 className="text-base sm:text-lg font-black text-white mt-0.5 max-w-md">
+                  <h2 className="text-base sm:text-lg font-black text-white mt-1 max-w-md">
                     {getPrizeFullLabel(activePrize)}
                   </h2>
                 </div>
@@ -745,6 +768,19 @@ export const LiveDrawView: React.FC<Props> = ({
                     </div>
                   ) : null}
 
+                  {isLastDrawTest && (
+                    <button
+                      onClick={() => {
+                        setDrawExecutionMode('oficial');
+                        setIsConfirmModalOpen(true);
+                      }}
+                      className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20 border border-emerald-300/30 mb-1"
+                    >
+                      <Trophy className="w-4 h-4 text-amber-300 animate-pulse" />
+                      <span>Pasar a Sorteo Oficial de este Premio</span>
+                    </button>
+                  )}
+
                   <div className="flex gap-2">
                     {onViewVerification && (winnerTicket || currentCandidate) && (
                       <button
@@ -775,7 +811,7 @@ export const LiveDrawView: React.FC<Props> = ({
                       className="flex-1 py-2.5 px-3 bg-white/10 hover:bg-white/15 text-white border border-white/10 font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5 text-gray-300" />
-                      <span>Re-sortear premio</span>
+                      <span>{isLastDrawTest ? 'Repetir Prueba' : 'Re-sortear premio'}</span>
                     </button>
                   </div>
                 </div>
@@ -822,40 +858,75 @@ export const LiveDrawView: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Selector de Modo: Oficial vs Prueba */}
+              <div className="flex rounded-2xl bg-black/50 p-1 border border-white/10 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setDrawExecutionMode('oficial')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    drawExecutionMode === 'oficial'
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Trophy className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Sorteo Oficial</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawExecutionMode('prueba')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    drawExecutionMode === 'prueba'
+                      ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <span>🧪 Simulacro / Prueba</span>
+                </button>
+              </div>
+
               {/* Detalles del Sorteo */}
-              <div className="space-y-2.5 bg-white/[0.03] border border-white/10 rounded-2xl p-4 my-4 text-xs font-mono">
+              <div className="space-y-2.5 bg-white/[0.03] border border-white/10 rounded-2xl p-4 my-3 text-xs font-mono">
                 <div className="flex justify-between items-center py-1 border-b border-white/5">
-                  <span className="text-gray-400">Premio a adjudicar:</span>
+                  <span className="text-gray-400">Modalidad:</span>
+                  <span className={`font-bold ${drawExecutionMode === 'oficial' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {drawExecutionMode === 'oficial' ? '🏆 OFICIAL (GRABA EN BD)' : '🧪 PRUEBA (NO ALTERA BD)'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-gray-400">Premio a sortear:</span>
                   <span className="text-emerald-300 font-bold text-right truncate max-w-[200px]">
                     {getPrizeFullLabel(activePrize)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center py-1 border-b border-white/5">
-                  <span className="text-gray-400">Boletos participantes:</span>
+                  <span className="text-gray-400">Boletos en juego:</span>
                   <span className="text-cyan-300 font-bold">
                     {eligibleTickets.length} boletos válidos
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center py-1 border-b border-white/5">
-                  <span className="text-gray-400">Tiempo de giro programado:</span>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-gray-400">Tiempo de giro:</span>
                   <span className="text-amber-300 font-bold">
                     {spinDuration} segundos
                   </span>
                 </div>
-
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-gray-400">Validez del acto:</span>
-                  <span className="text-emerald-400 font-bold">
-                    OFICIAL E IRREVOCABLE
-                  </span>
-                </div>
               </div>
 
-              {/* Advertencia Solemne */}
-              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl mb-5 text-[11px] text-amber-200/90 leading-relaxed">
-                ⚠️ <strong>Aviso Oficial:</strong> Al confirmar, la ruleta se ejecutará en vivo y el ganador quedará registrado de forma definitiva en la base de datos de la plataforma.
+              {/* Advertencia contextual */}
+              <div className={`p-3 rounded-xl mb-5 text-[11px] leading-relaxed ${
+                drawExecutionMode === 'oficial'
+                  ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-200/90'
+                  : 'bg-amber-500/10 border border-amber-500/25 text-amber-200/90'
+              }`}>
+                {drawExecutionMode === 'oficial' ? (
+                  <span>🔒 <strong>Modo Oficial:</strong> El ganador quedará formalmente asentado en PostgreSQL y la auditoría como premio adjudicado.</span>
+                ) : (
+                  <span>🧪 <strong>Modo Prueba:</strong> La ruleta girará exactamente igual con los boletos reales, pero <strong>NO guardará el resultado</strong> ni bloqueará el premio para permitirte ensayar.</span>
+                )}
               </div>
 
               {/* Botones de acción */}
@@ -871,12 +942,16 @@ export const LiveDrawView: React.FC<Props> = ({
                   type="button"
                   onClick={() => {
                     setIsConfirmModalOpen(false);
-                    startDraw();
+                    startDraw(drawExecutionMode);
                   }}
-                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 hover:shadow-emerald-500/50 transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-400/40"
+                  className={`flex-1 py-3 px-4 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                    drawExecutionMode === 'oficial'
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white border-emerald-400/40 shadow-emerald-600/30'
+                      : 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white border-amber-400/40 shadow-amber-600/30'
+                  }`}
                 >
                   <Check className="w-4 h-4" />
-                  <span>Confirmar y Sortear</span>
+                  <span>{drawExecutionMode === 'oficial' ? 'Confirmar Sorteo Oficial' : 'Iniciar Simulacro Prueba'}</span>
                 </button>
               </div>
             </motion.div>
