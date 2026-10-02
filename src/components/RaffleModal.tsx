@@ -28,6 +28,7 @@ export const RaffleModal: React.FC<Props> = ({
   const [assignedAdmin, setAssignedAdmin] = useState('');
   const [status, setStatus] = useState<RaffleStatus>('activa');
   const [error, setError] = useState('');
+  const [saving,setSaving]=useState(false);
 
   useEffect(() => {
     if (raffleToEdit) {
@@ -63,8 +64,9 @@ export const RaffleModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(saving)return;
     if (!title.trim()) {
       setError('El título de la rifa es obligatorio.');
       return;
@@ -100,8 +102,8 @@ export const RaffleModal: React.FC<Props> = ({
       winner: raffleToEdit?.winner,
     };
 
-    onSaveRaffle(savedRaffle);
-    onClose();
+    setSaving(true);
+    try { await onSaveRaffle(savedRaffle); onClose(); } catch(e: any) { setError(e.message || 'No se pudieron guardar los cambios.'); } finally {setSaving(false);}
   };
 
   return (
@@ -279,7 +281,7 @@ export const RaffleModal: React.FC<Props> = ({
             </button>
             <button
               id="save-raffle-submit-btn"
-              type="submit"
+              type="submit" disabled={saving}
               className="px-5 py-2 text-xs font-semibold text-white bg-[#0F1115] hover:bg-[#23272F] rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Check className="w-3.5 h-3.5 text-[#10B981]" />

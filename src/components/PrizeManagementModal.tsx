@@ -27,6 +27,7 @@ export const PrizeManagementModal: React.FC<Props> = ({
   const [category, setCategory] = useState<string>('Tecnología');
   const [link, setLink] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [saving,setSaving] = useState(false);
 
   useEffect(() => {
     if (prizeToEdit) {
@@ -49,8 +50,9 @@ export const PrizeManagementModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(saving)return;
     if (!name.trim()) {
       setError('El nombre del premio es obligatorio.');
       return;
@@ -72,8 +74,8 @@ export const PrizeManagementModal: React.FC<Props> = ({
       winnerTicket: prizeToEdit?.winnerTicket,
     };
 
-    onSavePrize(newPrize);
-    onClose();
+    setSaving(true);
+    try { await onSavePrize(newPrize); onClose(); } catch(e: any) { setError(e.message || 'No se pudieron guardar los cambios.'); } finally {setSaving(false);}
   };
 
   return (
@@ -224,7 +226,7 @@ export const PrizeManagementModal: React.FC<Props> = ({
               Cancelar
             </button>
             <button
-              type="submit"
+              type="submit" disabled={saving}
               className="px-5 py-2 text-xs font-semibold text-white bg-[#0F1115] hover:bg-[#23272F] rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Check className="w-3.5 h-3.5 text-[#10B981]" />

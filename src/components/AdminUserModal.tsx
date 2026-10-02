@@ -27,13 +27,14 @@ export const AdminUserModal: React.FC<Props> = ({
   const [assignedQuota, setAssignedQuota] = useState('20');
   const [status, setStatus] = useState<'activo' | 'inactivo'>('activo');
   const [error, setError] = useState('');
+  const [saving,setSaving]=useState(false);
 
   useEffect(() => {
     if (adminToEdit) {
       setName(adminToEdit.name);
       setDni(adminToEdit.dni || '');
       setEmail(adminToEdit.email);
-      setPassword(adminToEdit.password || '');
+      setPassword('');
       setAssignedRaffleId(adminToEdit.assignedRaffleId || (raffles[0]?.id ?? ''));
       setAssignedQuota(String(adminToEdit.assignedQuota || 20));
       setStatus(adminToEdit.status);
@@ -51,8 +52,9 @@ export const AdminUserModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(saving)return;
     const cleanName = name.trim();
     const cleanDni = dni.trim();
     const cleanEmail = email.trim().toLowerCase();
@@ -73,8 +75,8 @@ export const AdminUserModal: React.FC<Props> = ({
     const effectiveEmail = cleanEmail || `admin.${cleanDni}@rifas.pe`;
 
     const quotaNum = parseInt(assignedQuota, 10);
-    if (isNaN(quotaNum) || quotaNum <= 0) {
-      setError('La cuota asignada de tickets debe ser un número entero mayor a 0 (ej: 20).');
+    if (quotaNum !== 20) {
+      setError('Cada talonario tiene exactamente 20 números.');
       return;
     }
 
@@ -85,7 +87,7 @@ export const AdminUserModal: React.FC<Props> = ({
       .substring(0, 2)
       .toUpperCase() || 'AD';
 
-    const effectivePassword = password.trim() || cleanDni;
+    const effectivePassword = password || (!adminToEdit ? cleanDni : undefined);
     const isNew = !adminToEdit;
 
     const savedAdmin: AdminUser = {
@@ -93,7 +95,7 @@ export const AdminUserModal: React.FC<Props> = ({
       name: cleanName,
       dni: cleanDni,
       email: effectiveEmail,
-      password: effectivePassword,
+
       assignedRafflesCount: adminToEdit ? adminToEdit.assignedRafflesCount : 1,
       totalSold: adminToEdit ? adminToEdit.totalSold : 0,
       assignedQuota: quotaNum,
@@ -102,8 +104,8 @@ export const AdminUserModal: React.FC<Props> = ({
       assignedRaffleId,
     };
 
-    onSaveAdmin(savedAdmin, effectivePassword, isNew);
-    onClose();
+    setSaving(true);
+    try { await onSaveAdmin(savedAdmin, effectivePassword, isNew); onClose(); } catch(e: any) { setError(e.message || 'No se pudieron guardar los cambios.'); } finally {setSaving(false);}
   };
 
   return (
@@ -294,7 +296,7 @@ export const AdminUserModal: React.FC<Props> = ({
             </button>
             <button
               id="save-admin-submit-btn"
-              type="submit"
+              type="submit" disabled={saving}
               className="px-5 py-2 text-xs font-semibold text-white bg-[#0F1115] hover:bg-[#23272F] rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Check className="w-3.5 h-3.5 text-[#10B981]" />

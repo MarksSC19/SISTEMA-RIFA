@@ -40,6 +40,7 @@ import { RaffleModal } from './RaffleModal';
 import { AdminUserModal } from './AdminUserModal';
 import { SuperAdminProfileModal } from './SuperAdminProfileModal';
 import { TicketEditModal } from './TicketEditModal';
+import {getAdminBooklet} from '../utils/ticketQuota';
 
 interface Props {
   raffles: Raffle[];
@@ -136,6 +137,7 @@ export const SuperAdminView: React.FC<Props> = ({
   const [receiptMsg, setReceiptMsg] = useState(config?.receiptMessage || '¡Gracias por apoyar nuestra causa! Este comprobante digital certifica su participación válida.');
   const [configSavedToast, setConfigSavedToast] = useState(false);
 
+  React.useEffect(()=>{if(config){setOrgName(config.organizationName);setCurrSymbol(config.currencySymbol);setSupportPhone(config.supportPhone);setReceiptMsg(config.receiptMessage);}},[config]);
   // Status badge styling helper
   const renderStatusBadge = (status: Raffle['status']) => {
     switch (status) {
@@ -171,8 +173,8 @@ export const SuperAdminView: React.FC<Props> = ({
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Control Financiero', icon: <TrendingUp className="w-4 h-4" /> },
-    { id: 'admins', label: '31 Administradores', icon: <Users className="w-4 h-4" /> },
-    { id: 'premios', label: '7 Premios Oficiales', icon: <Trophy className="w-4 h-4" /> },
+    { id: 'admins', label: admins.length+' Administradores', icon: <Users className="w-4 h-4" /> },
+    { id: 'premios', label: prizes.length+' Premios', icon: <Trophy className="w-4 h-4" /> },
     { id: 'sorteos', label: 'Sorteos & Ganadores', icon: <Dices className="w-4 h-4" /> },
     { id: 'auditoria', label: 'Auditoría', icon: <ShieldCheck className="w-4 h-4" /> },
     { id: 'config', label: 'Configuración', icon: <Settings className="w-4 h-4" /> },
@@ -228,20 +230,20 @@ export const SuperAdminView: React.FC<Props> = ({
 
   const handleToggleAdminStatus = (admin: AdminUser) => {
     const nextStatus = admin.status === 'activo' ? 'inactivo' : 'activo';
-    onSaveAdmin({ ...admin, status: nextStatus });
+    Promise.resolve(onSaveAdmin({ ...admin, status: nextStatus })).catch((e: Error)=>alert(e.message));
   };
 
   // Config save
-  const handleSaveConfigForm = (e: React.FormEvent) => {
+  const handleSaveConfigForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (onSaveConfig) {
-      onSaveConfig({
+      try { await onSaveConfig({
         organizationName: orgName,
         currencyName: 'Soles',
         currencySymbol: currSymbol,
         supportPhone,
         receiptMessage: receiptMsg,
-      });
+      }); } catch(e:any){alert(e.message);return;}
     }
     setConfigSavedToast(true);
     setTimeout(() => setConfigSavedToast(false), 2500);
@@ -252,6 +254,8 @@ export const SuperAdminView: React.FC<Props> = ({
     return p.raffleId === selectedRaffleForPrizes;
   });
 
+  const selectedBookletAdmin = admins.find(a=>a.id===ticketSellerFilter);
+  const selectedBooklet = selectedBookletAdmin ? getAdminBooklet(selectedBookletAdmin.dni || selectedBookletAdmin.id,selectedBookletAdmin.bookletNumber) : null;
   const filteredSalesTickets = (tickets || []).filter(t => {
     const matchesSearch = 
       t.buyerName.toLowerCase().includes(ticketSearch.toLowerCase()) ||
@@ -466,7 +470,7 @@ export const SuperAdminView: React.FC<Props> = ({
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[10px] font-mono font-bold tracking-widest text-[#059669] bg-[#ECFDF5] px-2.5 py-0.5 rounded-full border border-[#A7F3D0] uppercase">
-                        CAMPAÑA OFICIAL: {currentRaffle?.title || 'Rifa Graduación Administración'} ({currentRaffle?.code || '#024'}) · 31 ADMINISTRADORES
+                        CAMPAÑA OFICIAL: {currentRaffle?.title || 'Rifa Graduación Administración'} ({currentRaffle?.code || '#024'}) · {operationalAdmins.length} ADMINISTRADORES
                       </span>
                     </div>
                     <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[#0F1115]">
@@ -840,6 +844,22 @@ export const SuperAdminView: React.FC<Props> = ({
                 </div>
 
                 {/* AUDITORÍA Y CONTROL DE ÚLTIMAS VENTAS POR ADMINISTRADOR */}
+                <div id="booklet-review" className="scroll-mt-4">
+                  {selectedBooklet && selectedBookletAdmin && <div className="bg-white border rounded-2xl p-5 mb-4">
+                    <h2 className="font-bold text-sm">Talonario de {selectedBookletAdmin.name}: {selectedBooklet.label}</h2>
+                    <p className="text-xs text-gray-500 my-2">Seleccione un boleto emitido para corregir el comprador. Los anulados conservan su número.</p>
+                    <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                      {Array.from({length:20},(_,i)=>selectedBooklet.startNumber+i).map(number=>{
+                        const ticket=tickets.find(t=>t.number===number && t.sellerAdminId===selectedBookletAdmin.id && t.raffleId===currentRaffle?.id);
+                        const occupied=tickets.some(t=>t.number===number && t.raffleId===currentRaffle?.id);
+                        return <button key={number} type="button" disabled={!ticket} title={ticket ? ticket.buyerName : occupied ? 'Número histórico emitido por otro administrador' : 'Sin emitir'} onClick={()=>{setTicketToEdit(ticket!);setIsTicketEditModalOpen(true);}} className={'p-2 rounded-lg border text-xs '+(ticket?.isValid===false?'bg-red-50':ticket?'bg-emerald-50':occupied?'bg-amber-50':'bg-gray-50')}>
+                          {'#'+String(number).padStart(4,'0')}<span className="block text-[9px]">{ticket?.isValid===false?'Anulado':ticket?'Emitido':occupied?'Histórico':'Sin emitir'}</span>
+                        </button>;
+                      })}
+                    </div>
+                    {tickets.some(t=>t.sellerAdminId===selectedBookletAdmin.id && t.raffleId===currentRaffle?.id && (t.number<selectedBooklet.startNumber||t.number>selectedBooklet.endNumber)) && <p className="text-xs text-amber-700 mt-3">Este administrador tiene boletos históricos fuera de su rango actual. Se conservan y aparecen en la tabla para revisión.</p>}
+                  </div>}
+                </div>
                 <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-xs overflow-hidden">
                   <div className="p-5 border-b border-[#E5E7EB] space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -855,7 +875,7 @@ export const SuperAdminView: React.FC<Props> = ({
 
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-[#059669] bg-[#ECFDF5] px-2.5 py-1 rounded-lg border border-[#A7F3D0]">
-                          {(tickets || []).length} Ventas Totales Registradas
+                          {(tickets || []).filter(t=>t.isValid!==false).length} Ventas Válidas Registradas
                         </span>
                       </div>
                     </div>
@@ -915,11 +935,11 @@ export const SuperAdminView: React.FC<Props> = ({
                             </td>
                           </tr>
                         ) : (
-                          filteredSalesTickets.slice(0, 30).map((t) => (
+                          filteredSalesTickets.map((t) => (
                             <tr key={t.id} className="hover:bg-[#FAFAFA] transition-colors">
                               <td className="py-3 px-4">
                                 <span className="font-mono font-bold text-sm text-[#0F1115] bg-[#F5F5F3] px-2 py-0.5 rounded-md border border-[#E5E7EB]">
-                                  {t.formattedNumber}
+                                  {t.formattedNumber}{t.isValid===false && <span className="block text-red-600 text-[9px]">ANULADO</span>}
                                 </span>
                               </td>
                               <td className="py-3 px-4">
@@ -1451,6 +1471,7 @@ export const SuperAdminView: React.FC<Props> = ({
                       </div>
 
                     <div className="mt-4 pt-3 border-t border-[#E5E7EB]/80 flex items-center justify-end gap-1.5">
+                      <button type="button" className="px-3 py-1.5 text-xs font-semibold border rounded-lg" onClick={()=>{setTicketSellerFilter(admin.id);setActiveTab('overview');setTimeout(()=>document.getElementById('booklet-review')?.scrollIntoView({behavior:'smooth'}),0);}}>Ver talonario</button>
                       <button
                         onClick={() => handleEditAdmin(admin)}
                         className="p-1.5 text-[#4B5563] hover:text-[#0F1115] hover:bg-[#F5F5F3] rounded-lg transition-colors cursor-pointer"
