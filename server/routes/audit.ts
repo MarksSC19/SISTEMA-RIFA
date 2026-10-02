@@ -11,9 +11,9 @@ router.get('/', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
       SELECT 
         id,
         action,
-        performed_by as "performedBy",
-        target,
-        details,
+        performed_by as "user",
+        target as raffle,
+        details as detail,
         hash_signature as "hashSignature",
         previous_hash as "previousHash",
         created_at as timestamp,

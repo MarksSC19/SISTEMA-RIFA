@@ -42,7 +42,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess }) => {
     setIsLoading(true);
 
     // 1. Autenticación contra PostgreSQL (puerto 5433)
-    api.login(cleanDni, password.trim())
+    api.login(cleanDni, password)
       .then((data) => {
         setIsLoading(false);
         onLoginSuccess(data.user);

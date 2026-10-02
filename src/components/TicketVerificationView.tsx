@@ -39,6 +39,8 @@ interface BuyerTicketSummary {
   formattedNumber: string;
   ticketCode: string;
   issuedAt?: string;
+  price?: number;
+  status?: string;
 }
 
 interface OfficialPrize {
@@ -174,47 +176,33 @@ export const TicketVerificationView: React.FC<Props> = ({
 
       api.verifyPublicTicket(code.trim())
         .then((res: any) => {
-          if (res && res.valid && res.ticket) {
+          if (res && res.ticket) {
             const t = res.ticket;
             const mapped: Ticket = {
               id: `t-${t.number}`,
               number: t.number,
               formattedNumber: t.formattedNumber,
-              raffleId: 'rf-024',
+              raffleId: t.raffleId || 'rf-024',
+              price: t.price,
               buyerName: t.buyerName,
               dni: t.rawDni || t.dni,
               phone: t.phone || '***-***-***',
               timestamp: String(t.timestamp || t.issuedAt || new Date().toISOString()),
               timeFormatted: formatPeruTime(t.timestamp || t.issuedAt),
               verificationCode: t.verificationCode,
-              isValid: true,
+              isValid: Boolean(res.valid),
               registeredBy: t.registeredBy || 'Administrador Autorizado',
             };
             setCurrentTicket(mapped);
             if (Array.isArray(res.buyerAllTickets) && res.buyerAllTickets.length > 0) {
-              setBuyerAllTickets(res.buyerAllTickets);
+              setBuyerAllTickets(res.buyerAllTickets.filter((bt:any)=>bt.status==='valid').map((bt:any)=>({...bt,ticketCode:bt.verificationCode}))); 
             }
             if (onSelectTicket) onSelectTicket(mapped);
           } else {
             setSearchError('El boleto con este código no fue encontrado en la base de datos oficial.');
           }
         })
-        .catch(() => {
-          // Intentar en la lista local de tickets
-          const query = code.trim().toLowerCase();
-          const localMatch = allTickets.find(
-            t => t.verificationCode.toLowerCase() === query ||
-              t.formattedNumber.toLowerCase() === query ||
-              t.formattedNumber.replace('#', '') === query ||
-              t.dni === code.trim()
-          );
-
-          if (localMatch) {
-            setCurrentTicket(localMatch);
-          } else {
-            setSearchError(`No se encontró registro para el código: ${code.trim()}`);
-          }
-        })
+        .catch((e: Error) => { setCurrentTicket(null); setSearchError(e.message || 'No se pudo verificar con el servidor.'); })
         .finally(() => {
           setIsLoading(false);
         });
@@ -266,20 +254,21 @@ export const TicketVerificationView: React.FC<Props> = ({
 
     try {
       const res = await api.verifyPublicTicket(query);
-      if (res.valid && res.ticket) {
+      if (res.ticket) {
         const t = res.ticket;
         const mapped: Ticket = {
           id: `t-${t.number}`,
           number: t.number,
           formattedNumber: t.formattedNumber,
-          raffleId: 'rf-024',
+          raffleId: t.raffleId || 'rf-024',
+          price: t.price,
           buyerName: t.buyerName,
           dni: t.dni,
           phone: t.phone || '***-***-***',
           timestamp: String(t.timestamp || t.issuedAt || new Date().toISOString()),
           timeFormatted: formatPeruTime(t.timestamp || t.issuedAt),
           verificationCode: t.verificationCode,
-          isValid: true,
+          isValid: Boolean(res.valid),
           registeredBy: t.registeredBy || 'Administrador Autorizado',
         };
         setCurrentTicket(mapped);
@@ -291,56 +280,17 @@ export const TicketVerificationView: React.FC<Props> = ({
         setIsLoading(false);
         return;
       }
-    } catch {
-      // Continuar con fallback
-    }
-
-    const qLower = query.toLowerCase();
-    const found = allTickets.find(
-      t => t.verificationCode.toLowerCase() === qLower ||
-        t.formattedNumber.toLowerCase() === qLower ||
-        t.formattedNumber.replace('#', '') === qLower ||
-        t.dni === query
-    );
-
-    if (found) {
-      setCurrentTicket(found);
-      const matches = allTickets.filter(t => t.dni === found.dni).map(t => ({
-        number: t.number,
-        formattedNumber: t.formattedNumber,
-        ticketCode: t.verificationCode,
-        issuedAt: t.timestamp,
-      }));
-      setBuyerAllTickets(matches);
-      if (onSelectTicket) onSelectTicket(found);
-      setSearchCode('');
-    } else {
-      setSearchError('No se encontró ningún ticket con ese código, DNI o número en la base de datos.');
-    }
+    } catch(e:any) {setCurrentTicket(null);setSearchError(e.message || 'No se pudo verificar el boleto.');}
     setIsLoading(false);
   };
-
-  const handleSelectOtherBuyerTicket = (bt: BuyerTicketSummary) => {
-    const matched = allTickets.find(t => t.number === bt.number || t.verificationCode === bt.ticketCode);
-    if (matched) {
-      setCurrentTicket(matched);
-      if (onSelectTicket) onSelectTicket(matched);
-    } else if (currentTicket) {
-      setCurrentTicket({
-        id: `t-${bt.number}`,
-        number: bt.number,
-        formattedNumber: bt.formattedNumber,
-        raffleId: 'rf-024',
-        buyerName: currentTicket.buyerName,
-        dni: currentTicket.dni,
-        phone: currentTicket.phone,
-        timestamp: bt.issuedAt || currentTicket.timestamp,
-        timeFormatted: formatPeruTime(bt.issuedAt || currentTicket.timestamp),
-        verificationCode: bt.ticketCode,
-        isValid: true,
-        registeredBy: currentTicket.registeredBy,
-      });
-    }
+  const handleSelectOtherBuyerTicket = async (bt: BuyerTicketSummary) => {
+    setIsLoading(true);
+    try {
+      const res=await api.verifyPublicTicket(bt.ticketCode);
+      const t=res.ticket;
+      if(t){const mapped:Ticket={id:t.verificationCode,number:t.number,formattedNumber:t.formattedNumber,raffleId:t.raffleId,buyerName:t.buyerName,dni:t.dni,phone:t.phone||'',timestamp:t.issuedAt,timeFormatted:formatPeruTime(t.issuedAt),verificationCode:t.verificationCode,isValid:res.valid,registeredBy:t.registeredBy,price:t.price};setCurrentTicket(mapped);onSelectTicket?.(mapped);}
+    }catch(e:any){setCurrentTicket(null);setSearchError(e.message);}
+    finally{setIsLoading(false);}
   };
 
   const handleCopyLink = () => {
@@ -430,7 +380,7 @@ export const TicketVerificationView: React.FC<Props> = ({
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full uppercase flex items-center gap-1 shadow-2xs">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>CERTIFICADO OFICIAL</span>
+            <span>{currentTicket?.isValid ? 'CERTIFICADO OFICIAL' : 'VERIFICACIÓN DE BOLETO'}</span>
           </span>
         </div>
       </div>
@@ -446,6 +396,8 @@ export const TicketVerificationView: React.FC<Props> = ({
             Verificando firma criptográfica inmutable en la base de datos de Junín.
           </p>
         </div>
+      ) : currentTicket && !currentTicket.isValid ? (
+        <div role="alert" className="p-8 bg-red-50 border border-red-200 rounded-3xl text-red-800 text-center"><h2 className="font-bold">Boleto anulado</h2><p>{currentTicket.formattedNumber} no participa en el sorteo.</p></div>
       ) : currentTicket ? (
         /* CERTIFICADO DIGITAL DE TICKET VÁLIDO */
         <motion.div
@@ -483,7 +435,7 @@ export const TicketVerificationView: React.FC<Props> = ({
                   {buyerAllTickets.length} Boletos a nombre de este titular
                 </span>
                 <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/60 px-2 py-0.5 rounded-full font-mono">
-                  S/ {buyerAllTickets.length * 10}.00 Total
+                  S/ {buyerAllTickets.reduce((sum,t)=>sum+Number(t.price ?? currentTicket?.price ?? 10),0).toFixed(2)} Total
                 </span>
               </div>
               <p className="text-[11px] text-emerald-700">

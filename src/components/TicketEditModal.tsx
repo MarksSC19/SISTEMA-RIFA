@@ -40,8 +40,12 @@ export const TicketEditModal: React.FC<Props> = ({
       setError('El nombre del comprador es obligatorio.');
       return;
     }
-    if (!dni.trim() || dni.trim().length < 8) {
+    if (!/^\d{8}$/.test(dni.trim())) {
       setError('El DNI o documento de identidad debe tener al menos 8 dígitos.');
+      return;
+    }
+    if (!/^\d{9}$/.test(phone.trim())) {
+      setError('El celular debe tener exactamente 9 dígitos.');
       return;
     }
 

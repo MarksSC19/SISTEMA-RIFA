@@ -185,7 +185,7 @@ export const LiveDrawView: React.FC<Props> = ({
       // En modo oficial: llamada oficial a PostgreSQL
       try {
         if (activePrize) {
-          const res = await api.executeDraw(activePrize.id, true);
+          const res = await api.executeDraw(activePrize.id, false);
           if (res?.winner) {
             const found = eligibleTickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number) ||
                           tickets.find(t => t.id === res.winner.ticketId || t.number === res.winner.number);
@@ -205,14 +205,15 @@ export const LiveDrawView: React.FC<Props> = ({
               paymentMethod: 'yape',
             };
           } else {
-            targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+            throw new Error('El servidor no devolvió un ganador.');
           }
         } else {
-          targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+          throw new Error('Seleccione un premio para el sorteo oficial.');
         }
       } catch (err) {
-        console.warn('[LiveDraw] Ejecutando sorteo sobre tickets reales vendidos en memoria:', err);
-        targetCandidate = eligibleTickets[Math.floor(Math.random() * eligibleTickets.length)];
+        alert((err as Error).message || 'No se pudo ejecutar el sorteo oficial.');
+        setDrawState('idle');
+        return;
       }
     }
 
