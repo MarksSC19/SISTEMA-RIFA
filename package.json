@@ -11,7 +11,8 @@
     "db:migrate": "tsx server/migrate.ts",
     "db:seed": "tsx server/seed.ts",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:audit": "node scripts/run-ts.mjs scripts/audit-regression.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -32,6 +33,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/canvas-confetti": "^1.9.0",
     "@types/cors": "^2.8.19",
