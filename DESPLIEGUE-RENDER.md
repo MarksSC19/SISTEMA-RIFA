@@ -4,8 +4,8 @@ La rama `audit-talonarios-passwords` contiene las correcciones. No desplegarla c
 
 ## Preparación
 
-1. En Render, comprobar que el servicio usa este repositorio, su rama y el Dockerfile. La imagen existente usa Node 22 y ejecuta `npm run start`. Si usa runtime Node, instalar dependencias de desarrollo durante el build, ejecutar `npm run build` y disponer de `tsx` para el arranque y la migración.
-2. Conservar `DATABASE_URL` del servicio y configurar `JWT_SECRET` privado y aleatorio. El código exige este último en producción. Introducir los secretos directamente en Render; no guardarlos en GitHub ni en informes.
+1. Configuración comprobada en Render: servicio SISTEMA-RIFA, ID srv-dalagpek1f9s73dnk4dg, runtime Node, plan Free, rama main, commit desplegado 6deacdf. El start es `npm run start`. El build actual es `npm install && npm run build && npm run db:migrate && npm run db:seed`. Antes del despliegue corregido, sustituirlo por `npm ci && npm run build && npm run db:migrate`, con la migración ya validada y respaldo recuperable. Eliminar db:seed del build. El plan Free no permite Shell ni predeploy; puede ejecutar la migración desde este build, conectado a DATABASE_URL.
+2. Se comprobó la presencia de DATABASE_URL sin revelar su valor; JWT_SECRET está ausente. Conservar `DATABASE_URL` del servicio y configurar `JWT_SECRET` privado y aleatorio. El código exige este último en producción. Introducir los secretos directamente en Render; no guardarlos en GitHub ni en informes.
 3. Guardar un respaldo de PostgreSQL y probar su restauración. Ejecutar las consultas siguientes sobre la copia. Ninguna modifica datos.
 
 ```sql

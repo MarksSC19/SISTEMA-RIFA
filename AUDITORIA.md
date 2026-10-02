@@ -1,6 +1,6 @@
 # Auditoría de SISTEMA-RIFA — 2 de octubre de 2026
 
-Se revisó el repositorio MarksSC19/SISTEMA-RIFA, referencia original 6deacdfadeaf9615add3e34b3ebd1c52df91724d, y la interfaz desplegada en https://sistema-rifa-x4xr.onrender.com/. Las correcciones están publicadas en la rama audit-talonarios-passwords de GitHub. Todavía no están desplegadas en Render; el acceso a su panel requiere que el titular inicie sesión. La guía DESPLIEGUE-RENDER.md prepara la migración y las verificaciones.
+Se revisó el repositorio MarksSC19/SISTEMA-RIFA, referencia original 6deacdfadeaf9615add3e34b3ebd1c52df91724d, y la interfaz desplegada en https://sistema-rifa-x4xr.onrender.com/. Las correcciones están publicadas en la rama audit-talonarios-passwords de GitHub. La solicitud de revisión es https://github.com/MarksSC19/SISTEMA-RIFA/pull/1. Todavía no están desplegadas en Render. Se comprobó el servicio Node/Free, rama main y commit 6deacdf: DATABASE_URL está presente y JWT_SECRET ausente. El build actual ejecuta migrate y seed; se documenta retirar seed antes del despliegue. El plan Free no admite Shell ni predeploy. La guía DESPLIEGUE-RENDER.md prepara la migración y las verificaciones.
 
 ## Correcciones implementadas
 
