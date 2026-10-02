@@ -78,7 +78,7 @@ async function seed() {
   ];
   for (const [key, val] of configs) {
     await client.query(
-      `INSERT INTO system_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+      `INSERT INTO system_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
       [key, val]
     );
   }
@@ -89,14 +89,13 @@ async function seed() {
   await client.query(
     `INSERT INTO raffles (id, code, name, description, ticket_price, total_tickets, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (id) DO UPDATE SET 
-       name = $3, description = $4, ticket_price = $5, total_tickets = $6, status = $7`,
+     ON CONFLICT (id) DO NOTHING`,
     [raffle.id, raffle.code, raffle.title, raffle.description, raffle.ticketPrice, raffle.totalTickets, raffle.status]
   );
   console.log('✓ Raffle rf-024 seeded');
 
   // 3. Limpiar cualquier usuario anterior superadmin huérfano para evitar conflictos de email
-  await client.query(`DELETE FROM users WHERE id = 'usr-superadmin' OR email = 'marksdelmissolano@gmail.com';`);
+
 
   // 4. 31 Admins - Jheyson Ryam Jorge Vasquez (DNI: 70905188) es el Superadministrador Oficial
   for (const adm of RAW_ADMIN_DATA) {
@@ -104,11 +103,10 @@ async function seed() {
     const initialPassHash = await bcrypt.hash(adm.dni, 10); // Contraseña inicial es su DNI
     const isSuper = adm.dni === '70905188'; // Jheyson Ryam Jorge Vasquez es Superadmin
     await client.query(
-      `INSERT INTO users (id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (id) DO UPDATE SET 
-         email = $2, full_name = $4, dni = $5, role = $7, quota = $9`,
-      [adminId, adm.email, initialPassHash, adm.name, adm.dni, '987654321', isSuper ? 'super_admin' : 'admin', 'active', 20, !isSuper]
+      `INSERT INTO users (id, email, password_hash, full_name, dni, phone, role, status, quota, must_change_password, booklet_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT DO NOTHING`,
+      [adminId, adm.email, initialPassHash, adm.name, adm.dni, '987654321', isSuper ? 'super_admin' : 'admin', 'active', 20, true, adm.n]
     );
   }
   console.log('✓ 31 Administradores registrados en BD.');
@@ -119,8 +117,7 @@ async function seed() {
     await client.query(
       `INSERT INTO prizes (id, raffle_id, position, title, category, description, winner_ticket_id, winner_name, winner_phone, drawn_at)
        VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, NULL)
-       ON CONFLICT (id) DO UPDATE SET 
-         title = $4, category = $5, description = $6, position = $3, winner_ticket_id = NULL, winner_name = NULL, drawn_at = NULL`,
+       ON CONFLICT (id) DO NOTHING`,
       [prz.id, prz.raffleId, prz.order, prz.name, prz.category, prz.description]
     );
   }
