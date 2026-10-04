@@ -13,11 +13,14 @@ import publicRoutes from '../server/routes/public';
 import raffles from '../server/routes/raffles';
 import config from '../server/routes/config';
 import { getAdminBooklet, getAdminAvailableNumbers } from '../src/utils/ticketQuota';
+import {adminMetrics,activeSellers} from '../src/utils/adminMetrics';
 
 const pg = new PGlite();
 await pg.exec(fs.readFileSync('server/schema.sql', 'utf8'));
 await pg.exec(fs.readFileSync('server/schema.sql', 'utf8')); // migration is repeatable
+let failAudit=false;
 const query = async (sql: string, params?: any[]) => {
+  if(failAudit&&sql.startsWith('INSERT INTO audit_logs')){failAudit=false;throw new Error('Simulated audit failure');}
   const r = await pg.query(sql, params);
   return { rows: r.rows, rowCount: r.affectedRows || r.rows.length } as any;
 };
@@ -83,12 +86,21 @@ try {
   await request('POST','/draw/execute',{prizeId:'p1'},s.token,409);
   await request('DELETE','/tickets/'+winner.winner.ticketId,undefined,s.token,404);
   const verify=await request('GET','/public/verify/'+issued.verificationCode);assert.equal(verify.valid,false);
+  assert.notEqual(verify.ticket.buyerName,'CORREGIDO');assert.equal(verify.ticket.dni,'****4444');assert.equal(verify.ticket.rawDni,undefined);
+  assert.equal(verify.buyerAllTickets.length,1);
+  await request('GET','/public/verify/1',undefined,undefined,404);
+  await request('GET','/public/verify/44444444',undefined,undefined,404);
+  const privateVerify=await request('GET','/public/verify/44444444',undefined,s.token);
+  assert.equal(privateVerify.ticket.dni,'44444444');
+  await request('GET','/public/verify/'+issued.verificationCode,undefined,b.token,404);
   const roster=await request('GET','/admins',undefined,s.token);assert.equal(roster.length,3);assert.equal(roster[0].bookletNumber,1);
   await request('POST','/admins',{name:'DUPLICADO',dni:'11111111',email:'new@example.com'},s.token,409);
   const n=await request('POST','/admins',{name:'NUEVO',dni:'55555555',email:'new@example.com'},s.token,201);assert.ok(n.bookletNumber>31);
   await request('PUT','/admins/adm-1',{name:'RENOMBRADO',dni:'66666666'},s.token);
   const after=await query("SELECT * FROM users WHERE id='adm-1'");assert.equal(after.rows[0].booklet_number,1);assert.ok(await bcrypt.compare('New2026!',after.rows[0].password_hash));
   await request('DELETE','/admins/adm-3',undefined,s.token);
+  assert.ok(!(await request('GET','/admins',undefined,s.token)).some((u:any)=>u.id==='adm-3'));
+  assert.ok((await request('GET','/admins?includeArchived=true',undefined,s.token)).find((u:any)=>u.id==='adm-3').archivedAt);
   await request('GET','/tickets',undefined,b.token,401);
   await request('PUT','/config',{organizationName:'NUEVA ORGANIZACIÓN'},s.token);
   assert.equal((await request('GET','/config')).organizationName,'NUEVA ORGANIZACIÓN');
@@ -129,5 +141,60 @@ try {
   assert.equal(getAdminBooklet('unknown').adminNumber,0);
   const booklet=getAdminBooklet(n.id,n.bookletNumber);assert.equal(booklet.startNumber,(n.bookletNumber-1)*20+1);
   assert.equal(getAdminAvailableNumbers(getAdminBooklet('adm-1'),all).length,0);
+  // Archive a seller with history, including a cancelled ticket. All rows survive.
+  await request('DELETE','/admins/adm-1',undefined,s.token);
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM tickets WHERE seller_admin_id='adm-1'")).rows[0].n,20);
+  assert.ok(!(await request('GET','/admins',undefined,s.token)).some((u:any)=>u.id==='adm-1'));
+  await request('PUT','/admins/adm-1',{name:'IGNORED'},s.token,409);
+  await request('PUT','/admins/adm-1',{restore:true,status:'inactivo'},s.token);
+  assert.equal((await request('GET','/admins',undefined,s.token)).find((u:any)=>u.id==='adm-1').archivedAt,null);
+  await request('DELETE','/admins/adm-2',undefined,s.token,404); // supervisor cannot delete own account
+  await request('POST','/admins',{name:'  renombrado  ',dni:'99999999',email:'other@example.com'},s.token,409);
+  const homonym=await request('POST','/admins',{name:'RENOMBRADO',dni:'99999999',email:'other@example.com',allowSameName:true},s.token,201);
+  const defaultAdmin=await request('POST','/admins',{name:'DEFAULT CAMPAIGN',dni:'88888888',email:'default@example.com'},s.token,201);
+  assert.ok((await query("SELECT total_tickets FROM raffles WHERE id='rf-024'")).rows[0].total_tickets>=defaultAdmin.bookletNumber*20);
+  const small={...newRaffle,id:'rf-small',code:'SMALL',totalTickets:20};
+  await request('POST','/raffles',small,s.token,201); // unrelated users don't inflate a new campaign
+  await request('POST','/prizes',{...newPrize,id:'p-small',raffleId:'rf-small'},s.token,201);
+  await request('PUT','/admins/'+defaultAdmin.id,{assignedRaffleId:'rf-small'},s.token);
+  assert.ok((await query("SELECT total_tickets FROM raffles WHERE id='rf-small'")).rows[0].total_tickets>=defaultAdmin.bookletNumber*20);
+  const defaultLogin=await login('88888888','88888888');
+  const defaultChanged=await request('POST','/auth/change-password',{currentPassword:'88888888',newPassword:'Different2026!'},defaultLogin.token);
+  const firstPrice=await request('POST','/tickets',{...buyer,raffleId:'rf-small'},defaultChanged.token,201);assert.equal(firstPrice.price,12);
+  await request('PUT','/raffles/rf-small',{...small,totalTickets:defaultAdmin.bookletNumber*20,ticketPrice:15},s.token);
+  const secondPrice=await request('POST','/tickets',{...buyer,raffleId:'rf-small'},defaultChanged.token,201);assert.equal(secondPrice.price,15);
+  const sellerMetrics=(await request('GET','/admins',undefined,s.token)).find((u:any)=>u.id===defaultAdmin.id);
+  assert.equal(sellerMetrics.totalCollected,27);assert.equal(sellerMetrics.totalSold,2);
+  await request('PUT','/raffles/rf-small',{...small,totalTickets:20},s.token,400);
+  await request('POST','/draw/execute',{prizeId:'p-small',allowRedraw:'false'},s.token,400);
+  await request('PUT','/raffles/rf-small',{...small,totalTickets:defaultAdmin.bookletNumber*20,status:'borrador'},s.token);
+  await request('POST','/draw/execute',{prizeId:'p-small'},s.token,409);
+  const dashboardAdmins=[{...sellerMetrics,name:'SAME'},{...homonym,name:'SAME',assignedRaffleId:'rf-small',status:'inactivo'}];
+  const dashboard=adminMetrics(dashboardAdmins,[firstPrice,secondPrice,{...firstPrice,id:'cancelled',status:'cancelled',isValid:false}], 'rf-small');
+  assert.equal(dashboard[0].totalSold,2);assert.equal(dashboard[0].totalCollected,27);assert.equal(dashboard[1].totalSold,0);
+  assert.equal(activeSellers(dashboard).length,1);
+  // Reassignment retains the original campaign's historical sales metrics.
+  const historyDashboard=adminMetrics([{...sellerMetrics,assignedRaffleId:'rf-024'}],[firstPrice,secondPrice],'rf-small');
+  assert.equal(historyDashboard[0].totalCollected,27);
+  const persistedActions=(await query('SELECT action,details FROM audit_logs')).rows;
+  for(const action of ['CREAR_ADMINISTRADOR','EDITAR_ADMINISTRADOR','ARCHIVAR_ADMINISTRADOR','RESTAURAR_ADMINISTRADOR','EDITAR_CONFIGURACION','CREAR_RIFA','EDITAR_RIFA','ELIMINAR_RIFA','CREAR_PREMIO','EDITAR_PREMIO','ELIMINAR_PREMIO','REINICIAR_PREMIOS']) assert.ok(persistedActions.some((a:any)=>a.action===action),action);
+  assert.ok(persistedActions.find((a:any)=>a.action==='REINICIAR_PREMIOS').details.includes(newSale.id));
+  assert.ok(!JSON.stringify(persistedActions).includes('password_hash'));
+  // Audit and account mutation must either both commit or both roll back.
+  failAudit=true;
+  await request('DELETE','/admins/'+homonym.id,undefined,s.token,500);
+  assert.equal((await query('SELECT archived_at FROM users WHERE id=$1',[homonym.id])).rows[0].archived_at,null);
+  // Known historical alternate is recoverably retired only when it has no tickets.
+  const historicalName='ROSA VALERIA NAUPARI SALVADOR';
+  await query(`INSERT INTO users(id,email,password_hash,full_name,dni,phone,role) VALUES('historical-original','historical@example.com',$1,$2,'72095575','','admin'),('adm-23-alt','rosa.naupari.alt@rifas.pe',$1,$2,'72970575','','admin')`,[hash,historicalName]);
+  await pg.exec(fs.readFileSync('server/schema.sql','utf8'));
+  const retired=(await query("SELECT * FROM users WHERE id='adm-23-alt'")).rows[0];assert.ok(retired.archived_at);assert.equal(retired.status,'inactive');
+  await pg.exec(fs.readFileSync('server/schema.sql','utf8'));
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM audit_logs WHERE id='migration-retire-rosa-alt'")).rows[0].n,1);
+  await query("UPDATE users SET archived_at=NULL WHERE id='adm-23-alt'");
+  await query(`INSERT INTO tickets(id,ticket_number,ticket_code,raffle_id,seller_admin_id,buyer_name,buyer_phone,buyer_dni,payment_method,verification_hash,status) VALUES('historical-cancelled',600,'HISTORY-TEST','rf-small','adm-23-alt','HISTORY','999999999','44444444','efectivo','TEST','cancelled')`);
+  await pg.exec(fs.readFileSync('server/schema.sql','utf8'));
+  assert.equal((await query("SELECT archived_at FROM users WHERE id='adm-23-alt'")).rows[0].archived_at,null);
+  assert.equal((await query("SELECT status FROM tickets WHERE id='historical-cancelled'")).rows[0].status,'cancelled');
   console.log('PASS: '+checks+' comprobaciones HTTP + migración repetible, numeración, cuotas y persistencia.');
 } finally { await new Promise<void>(resolve=>server.close(()=>resolve()));await pg.close();await db.pool.end(); }

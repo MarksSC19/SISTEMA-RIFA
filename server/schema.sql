@@ -106,3 +106,21 @@ ALTER TABLE prizes ADD COLUMN IF NOT EXISTS link TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_raffle_id VARCHAR(64) NOT NULL DEFAULT 'rf-024';
 
 CREATE UNIQUE INDEX IF NOT EXISTS prizes_unique_winner ON prizes(raffle_id,winner_ticket_id) WHERE winner_ticket_id IS NOT NULL;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP WITH TIME ZONE;
+-- Retire only the known synthetic duplicate, with its original identity and no
+-- tickets of any status. Keep the account recoverable and all historical data.
+WITH retired AS (
+  UPDATE users u SET status='inactive', archived_at=CURRENT_TIMESTAMP
+  WHERE u.id='adm-23-alt' AND u.dni='72970575'
+    AND u.email='rosa.naupari.alt@rifas.pe' AND u.role='admin'
+    AND u.full_name='ROSA VALERIA NAUPARI SALVADOR' AND u.archived_at IS NULL
+    AND NOT EXISTS(SELECT 1 FROM tickets t WHERE t.seller_admin_id=u.id)
+    AND EXISTS(SELECT 1 FROM users original WHERE original.dni='72095575'
+      AND original.full_name=u.full_name AND original.archived_at IS NULL)
+  RETURNING id
+) INSERT INTO audit_logs(id,action,performed_by,target,details,hash_signature,previous_hash)
+  SELECT 'migration-retire-rosa-alt','ARCHIVAR_DUPLICADO_HISTORICO','MIGRACION',id,
+    'Cuenta alternativa creada por código de arranque anterior; sin boletos. Cuenta recuperable; DNI de titular no modificado.',
+    'MIGRATION-2026-10-03','GENESIS' FROM retired
+  ON CONFLICT(id) DO NOTHING;

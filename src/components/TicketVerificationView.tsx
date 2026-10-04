@@ -253,7 +253,7 @@ export const TicketVerificationView: React.FC<Props> = ({
     setIsLoading(true);
 
     try {
-      const res = await api.verifyPublicTicket(query);
+      const res = await api.verifyPublicTicket(query,!effectivePublicView);
       if (res.ticket) {
         const t = res.ticket;
         const mapped: Ticket = {
@@ -286,7 +286,7 @@ export const TicketVerificationView: React.FC<Props> = ({
   const handleSelectOtherBuyerTicket = async (bt: BuyerTicketSummary) => {
     setIsLoading(true);
     try {
-      const res=await api.verifyPublicTicket(bt.ticketCode);
+      const res=await api.verifyPublicTicket(bt.ticketCode,!effectivePublicView);
       const t=res.ticket;
       if(t){const mapped:Ticket={id:t.verificationCode,number:t.number,formattedNumber:t.formattedNumber,raffleId:t.raffleId,buyerName:t.buyerName,dni:t.dni,phone:t.phone||'',timestamp:t.issuedAt,timeFormatted:formatPeruTime(t.issuedAt),verificationCode:t.verificationCode,isValid:res.valid,registeredBy:t.registeredBy,price:t.price};setCurrentTicket(mapped);onSelectTicket?.(mapped);}
     }catch(e:any){setCurrentTicket(null);setSearchError(e.message);}

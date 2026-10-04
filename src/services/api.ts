@@ -81,15 +81,15 @@ export const api = {
   },
 
   // --- ADMINISTRADORES (31 OPERADORES) ---
-  async getAdmins() {
-    const res = await fetch(`${API_BASE}/admins`, {
+  async getAdmins(includeArchived = true) {
+    const res = await fetch(`${API_BASE}/admins?includeArchived=${includeArchived}`, {
       headers: { ...getAuthHeader() },
     });
     if (!res.ok) throw new Error('Error al cargar administradores');
     return res.json();
   },
 
-  async createAdmin(data: { name: string; dni: string; email: string; password?: string; assignedRaffleId?: string; assignedQuota?: number }) {
+  async createAdmin(data: { name: string; dni: string; email: string; password?: string; assignedRaffleId?: string; assignedQuota?: number; allowSameName?: boolean }) {
     const res = await fetch(`${API_BASE}/admins`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -116,8 +116,9 @@ export const api = {
       method: 'DELETE',
       headers: { ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error('Error al eliminar administrador');
-    return res.json();
+    const result=await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al retirar administrador');
+    return result;
   },
 
   // --- PREMIOS OFICIALES (7 PREMIOS) ---
@@ -211,8 +212,8 @@ export const api = {
   },
 
   // --- VERIFICACIÓN PÚBLICA QR (SIN LOGIN) ---
-  async verifyPublicTicket(code: string) {
-    const res = await fetch(`${API_BASE}/public/verify/${encodeURIComponent(code)}`);
+  async verifyPublicTicket(code: string, authenticated = false) {
+    const res = await fetch(`${API_BASE}/public/verify/${encodeURIComponent(code)}`,{headers:authenticated?getAuthHeader():{}});
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Código de boleto no válido');
     return data;

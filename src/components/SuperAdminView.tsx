@@ -41,6 +41,7 @@ import { AdminUserModal } from './AdminUserModal';
 import { SuperAdminProfileModal } from './SuperAdminProfileModal';
 import { TicketEditModal } from './TicketEditModal';
 import {getAdminBooklet} from '../utils/ticketQuota';
+import {adminMetrics,activeSellers} from '../utils/adminMetrics';
 
 interface Props {
   raffles: Raffle[];
@@ -104,6 +105,12 @@ export const SuperAdminView: React.FC<Props> = ({
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchRaffle, setSearchRaffle] = useState('');
   const [searchAdmin, setSearchAdmin] = useState('');
+  const [adminListFilter,setAdminListFilter]=useState<'all'|'active'|'archived'>('all');
+  const [campaignId,setCampaignId]=useState('rf-024');
+  const currentCampaign=raffles.find(r=>r.id===campaignId)||raffles[0];
+  const campaignAdmins=adminMetrics(admins,tickets,currentCampaign?.id||'rf-024');
+  const operationalSellers=activeSellers(campaignAdmins.filter(a=>a.assignedRaffleId===currentCampaign?.id));
+  const campaignRevenue=tickets.filter(t=>t.raffleId===currentCampaign?.id&&t.isValid!==false&&t.status!=='cancelled').reduce((sum,t)=>sum+Number(t.price||0),0);
   const [selectedRaffleForPrizes, setSelectedRaffleForPrizes] = useState<string>('all');
   const [overviewAdminSearch, setOverviewAdminSearch] = useState('');
   const [overviewAdminSort, setOverviewAdminSort] = useState<'highest' | 'lowest' | 'name'>('highest');
@@ -173,7 +180,7 @@ export const SuperAdminView: React.FC<Props> = ({
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Control Financiero', icon: <TrendingUp className="w-4 h-4" /> },
-    { id: 'admins', label: admins.length+' Administradores', icon: <Users className="w-4 h-4" /> },
+    { id: 'admins', label: campaignAdmins.filter(a=>!a.archivedAt).length+' Administradores', icon: <Users className="w-4 h-4" /> },
     { id: 'premios', label: prizes.length+' Premios', icon: <Trophy className="w-4 h-4" /> },
     { id: 'sorteos', label: 'Sorteos & Ganadores', icon: <Dices className="w-4 h-4" /> },
     { id: 'auditoria', label: 'Auditoría', icon: <ShieldCheck className="w-4 h-4" /> },
@@ -223,8 +230,8 @@ export const SuperAdminView: React.FC<Props> = ({
   };
 
   const handleDeleteAdminClick = (admin: AdminUser) => {
-    if (window.confirm(`¿Está seguro de eliminar al administrador "${admin.name}" (${admin.email})?`)) {
-      onDeleteAdmin(admin.id);
+    if (window.confirm(`¿Retirar a "${admin.name}" del listado? La cuenta quedará archivada y recuperable; sus boletos se conservarán.`)) {
+      onDeleteAdmin?.(admin.id);
     }
   };
 
@@ -263,8 +270,8 @@ export const SuperAdminView: React.FC<Props> = ({
       t.dni.includes(ticketSearch) ||
       (t.verificationCode && t.verificationCode.toLowerCase().includes(ticketSearch.toLowerCase())) ||
       (t.registeredBy && t.registeredBy.toLowerCase().includes(ticketSearch.toLowerCase()));
-    const matchesSeller = ticketSellerFilter === 'all' || t.sellerAdminId === ticketSellerFilter || t.registeredBy === ticketSellerFilter;
-    return matchesSearch && matchesSeller;
+    const matchesSeller = ticketSellerFilter === 'all' || t.sellerAdminId === ticketSellerFilter;
+    return matchesSearch && matchesSeller && t.raffleId===currentCampaign?.id;
   });
 
   return (
@@ -432,13 +439,18 @@ export const SuperAdminView: React.FC<Props> = ({
 
         {/* MAIN PANEL CONTENT */}
         <main className="flex-1 min-w-0">
+          <label className="flex items-center gap-2 mb-4 text-xs font-semibold">Campaña
+            <select aria-label="Campaña del panel" value={currentCampaign?.id||''} onChange={e=>{setCampaignId(e.target.value);setTicketSellerFilter('all');}} className="border rounded-lg p-2 bg-white">
+              {raffles.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}
+            </select>
+          </label>
           {activeTab === 'overview' && (() => {
-            const currentRaffle = raffles.find(r => r.id === 'rf-024') || raffles[0];
+            const currentRaffle = currentCampaign;
             const ticketPrice = currentRaffle?.ticketPrice || 10;
-            const operationalAdmins = admins.filter(a => a.id !== 'adm-super');
-            const totalMoneyCollected = operationalAdmins.reduce((acc, a) => acc + (a.totalSold * ticketPrice), 0);
+            const operationalAdmins = operationalSellers;
+            const totalMoneyCollected = campaignRevenue;
             const totalMoneyGoal = operationalAdmins.reduce((acc, a) => acc + ((a.assignedQuota || 20) * ticketPrice), 0);
-            const totalTicketsSold = operationalAdmins.reduce((acc, a) => acc + a.totalSold, 0);
+            const totalTicketsSold = tickets.filter(t=>t.raffleId===currentCampaign?.id&&t.isValid!==false&&t.status!=='cancelled').length;
             const totalQuotaTickets = operationalAdmins.reduce((acc, a) => acc + (a.assignedQuota || 20), 0);
             const completedAdmins = operationalAdmins.filter(a => a.totalSold >= (a.assignedQuota || 20));
 
@@ -511,7 +523,7 @@ export const SuperAdminView: React.FC<Props> = ({
                       Talonario Operador: <span className="text-[#10B981] font-mono">{personalSold} / {personalQuota} tickets vendidos</span>
                     </h3>
                     <p className="text-xs text-gray-300">
-                      Como Superadministrador también operas tus 20 boletos (S/ {(personalSold * 10).toFixed(2)} recaudados de tu meta de S/ {(personalQuota * 10).toFixed(2)}).
+                      Como supervisor también tienes un talonario. Recaudado en esta campaña: S/ {(campaignAdmins.find(a=>a.id===currentUser?.id)?.totalCollected||0).toFixed(2)}. Meta: S/ {(personalQuota*ticketPrice).toFixed(2)}.
                     </p>
                   </div>
 
@@ -575,11 +587,11 @@ export const SuperAdminView: React.FC<Props> = ({
                       S/ {totalMoneyGoal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </div>
                     <div className="text-[11px] text-[#6B7280] mt-1 font-mono">
-                      {operationalAdmins.length} admins × S/ 200.00 (20 tks)
+                      {operationalAdmins.length} vendedores activos × S/ {(ticketPrice*20).toFixed(2)} (20 tks)
                     </div>
                     <div className="text-[11px] text-[#059669] font-semibold mt-3 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Precio oficial: S/ {ticketPrice}.00 / ticket</span>
+                      <span>Precio vigente: S/ {ticketPrice.toFixed(2)} / boleto</span>
                     </div>
                   </div>
 
@@ -619,7 +631,7 @@ export const SuperAdminView: React.FC<Props> = ({
                       {completedAdmins.length} <span className="text-sm font-normal text-[#6B7280]">/ {operationalAdmins.length}</span>
                     </div>
                     <div className="text-[11px] text-[#6B7280] mt-1 font-mono">
-                      Admins con 20 tickets (S/ 200) completos
+                      Vendedores con 20 boletos completos
                     </div>
                     <div className="text-[11px] text-[#D97706] font-semibold mt-3">
                       {operationalAdmins.length - completedAdmins.length} admins aún en proceso
@@ -637,7 +649,7 @@ export const SuperAdminView: React.FC<Props> = ({
                           <span>Control Financiero: Recaudación por Administrador</span>
                         </h2>
                         <p className="text-xs text-[#6B7280] mt-0.5">
-                          Seguimiento en Soles recaudados por cada uno de los {operationalAdmins.length} administradores (Meta individual: S/ 200.00).
+                          Seguimiento de {operationalAdmins.length} vendedores activos (incluye supervisor con talonario). Meta individual: S/ {(ticketPrice*20).toFixed(2)}.
                         </p>
                       </div>
 
@@ -702,7 +714,7 @@ export const SuperAdminView: React.FC<Props> = ({
                               : 'bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]'
                           }`}
                         >
-                          Meta Cumplida S/ 200 ({completedAdmins.length})
+                          Talonario completo ({completedAdmins.length})
                         </button>
                         <button
                           onClick={() => setOverviewAdminFilter('pending')}
@@ -753,7 +765,7 @@ export const SuperAdminView: React.FC<Props> = ({
                         ) : (
                           filteredOverviewAdmins.map((admin, idx) => {
                             const quota = admin.assignedQuota || 20;
-                            const moneyCollected = admin.totalSold * ticketPrice;
+                            const moneyCollected = admin.totalCollected || 0;
                             const moneyGoal = quota * ticketPrice;
                             const isCompleted = admin.totalSold >= quota;
                             const percentage = Math.min(100, Math.round((admin.totalSold / quota) * 100));
@@ -826,7 +838,7 @@ export const SuperAdminView: React.FC<Props> = ({
                                   {isCompleted ? (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
                                       <CheckCircle2 className="w-3 h-3" />
-                                      <span>Meta Lograda (S/ 200)</span>
+                                      <span>Talonario completo</span>
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]">
@@ -892,7 +904,7 @@ export const SuperAdminView: React.FC<Props> = ({
                           className="text-xs bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl px-2.5 py-1.5 text-[#0F1115] focus:outline-none focus:border-[#0F1115]"
                         >
                           <option value="all">Todos los Administradores ({operationalAdmins.length})</option>
-                          {operationalAdmins.map((adm) => (
+                          {campaignAdmins.map((adm) => (
                             <option key={adm.id} value={adm.id}>
                               {adm.name} ({adm.totalSold} tks)
                             </option>
@@ -1019,7 +1031,7 @@ export const SuperAdminView: React.FC<Props> = ({
                       </div>
                       <div>
                         <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F1115]">
-                          Estado de los 7 Premios Oficiales (Rifa Graduación Administración)
+                          Premios de {currentRaffle?.title} ({prizes.filter(p=>p.raffleId===currentRaffle?.id).length})
                         </h2>
                         <span className="text-[11px] text-[#6B7280]">
                           Adjudicación oficial y certificación mediante algoritmo CSPRNG
@@ -1128,7 +1140,7 @@ export const SuperAdminView: React.FC<Props> = ({
                 <div>
                   <h2 className="text-base font-bold text-[#0F1115] uppercase tracking-wide flex items-center gap-2">
                     <Trophy className="w-4 h-4 text-[#059669]" />
-                    <span>Catálogo de los 7 Premios Oficiales (Rifa Graduación Administración)</span>
+                    <span>Catálogo de premios ({filteredPrizes.length})</span>
                   </h2>
                   <p className="text-xs text-[#6B7280]">
                     Premios configurados para la campaña oficial. Al momento del sorteo en vivo, se certificarán con algoritmo CSPRNG.
@@ -1308,7 +1320,7 @@ export const SuperAdminView: React.FC<Props> = ({
                 <div>
                   <h2 className="text-base font-bold text-[#0F1115] uppercase tracking-wide flex items-center gap-2">
                     <Users className="w-4 h-4 text-[#059669]" />
-                    <span>Administradores y Puntos de Emisión ({admins.length})</span>
+                    <span>Administradores y Puntos de Emisión ({campaignAdmins.filter(a=>!a.archivedAt).length})</span>
                   </h2>
                   <p className="text-xs text-[#6B7280]">
                     Gestión de operadores autorizados con acceso por login, DNI y cuota fijada en 20 tickets.
@@ -1316,6 +1328,9 @@ export const SuperAdminView: React.FC<Props> = ({
                 </div>
 
                 <div className="flex items-center gap-2.5">
+                  <select aria-label="Estado de administradores" value={adminListFilter} onChange={e=>setAdminListFilter(e.target.value as typeof adminListFilter)} className="border rounded-lg p-1.5 text-xs">
+                    <option value="all">Todos sin archivar</option><option value="active">Activos</option><option value="archived">Archivados</option>
+                  </select>
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 text-[#9CA3AF] absolute left-3 top-2.5" />
                     <input
@@ -1346,10 +1361,10 @@ export const SuperAdminView: React.FC<Props> = ({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold uppercase tracking-wider text-white">
-                      Recaudación Oficial: Cuota de S/ 200.00 por Administrador
+                      Recaudación: meta de S/ {((currentCampaign?.ticketPrice||10)*20).toFixed(2)} por vendedor activo
                     </h3>
                     <p className="text-[11px] text-white/70">
-                      Supervisión en tiempo real de cuánto dinero recolectó cada uno de los 31 operadores de Junín.
+                      {operationalSellers.length} vendedores activos. Los importes conservan el precio pagado por cada boleto.
                     </p>
                   </div>
                 </div>
@@ -1357,27 +1372,28 @@ export const SuperAdminView: React.FC<Props> = ({
                 <div className="flex items-center gap-2.5 text-xs font-mono">
                   <div className="bg-white/10 px-3 py-1.5 rounded-xl text-center">
                     <span className="text-[9px] text-white/60 block uppercase">Operadores</span>
-                    <span className="text-xs font-bold">{admins.filter(a => a.id !== 'adm-super').length}</span>
+                    <span className="text-xs font-bold">{operationalSellers.length}</span>
                   </div>
                   <div className="bg-white/10 px-3 py-1.5 rounded-xl text-center">
                     <span className="text-[9px] text-white/60 block uppercase">Meta Total</span>
                     <span className="text-xs font-bold text-white/90">
-                      S/ {(admins.filter(a => a.id !== 'adm-super').reduce((acc, a) => acc + (a.assignedQuota || 20), 0) * 10).toLocaleString()}
+                      S/ {(operationalSellers.reduce((acc,a)=>acc+(a.assignedQuota||20),0)*(currentCampaign?.ticketPrice||10)).toLocaleString()}
                     </span>
                   </div>
                   <div className="bg-white/10 px-3 py-1.5 rounded-xl text-center border border-[#10B981]/30">
                     <span className="text-[9px] text-[#10B981] block uppercase font-bold">Total Recaudado</span>
                     <span className="text-xs font-bold text-[#10B981]">
-                      S/ {(admins.filter(a => a.id !== 'adm-super').reduce((acc, a) => acc + a.totalSold, 0) * 10).toLocaleString()}
+                      S/ {campaignRevenue.toLocaleString('es-PE',{minimumFractionDigits:2})}
                     </span>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                {admins
+                {campaignAdmins
                   .filter((admin) => {
-                    if (admin.id === 'adm-super' || admin.name.toLowerCase().includes('marks')) return false;
+                    if(adminListFilter==='archived'?!admin.archivedAt:!!admin.archivedAt)return false;
+                    if(adminListFilter==='active'&&admin.status!=='activo')return false;
                     const q = searchAdmin.toLowerCase();
                     return (
                       admin.name.toLowerCase().includes(q) ||
@@ -1387,8 +1403,8 @@ export const SuperAdminView: React.FC<Props> = ({
                   })
                   .map((admin) => {
                     const quota = admin.assignedQuota || 20;
-                    const moneyCollected = admin.totalSold * 10;
-                    const moneyGoal = quota * 10;
+                    const moneyCollected = admin.totalCollected || 0;
+                    const moneyGoal = quota * (currentCampaign?.ticketPrice||10);
                     const isCompleted = admin.totalSold >= quota;
                     const remainingMoney = Math.max(0, moneyGoal - moneyCollected);
                     const percentage = Math.min(100, Math.round((admin.totalSold / quota) * 100));
@@ -1415,6 +1431,7 @@ export const SuperAdminView: React.FC<Props> = ({
                           </div>
 
                           <button
+                            disabled={!!admin.archivedAt||admin.role==='super_admin'}
                             onClick={() => handleToggleAdminStatus(admin)}
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors shrink-0 ml-1 ${
                               admin.status === 'activo'
@@ -1423,7 +1440,7 @@ export const SuperAdminView: React.FC<Props> = ({
                             }`}
                             title="Haga clic para cambiar estado"
                           >
-                            {admin.status === 'activo' ? '● Activo' : '● Inactivo'}
+                            {admin.archivedAt ? 'Archivado' : admin.role==='super_admin' ? 'Supervisor activo' : admin.status === 'activo' ? '● Activo' : '● Inactivo'}
                           </button>
                         </div>
 
@@ -1449,7 +1466,7 @@ export const SuperAdminView: React.FC<Props> = ({
                             <div className="flex items-center justify-between text-[10px]">
                               <span className="text-[#6B7280]">
                                 {isCompleted
-                                  ? '🎉 Meta S/ 200 cumplida'
+                                  ? `Meta S/ ${moneyGoal.toFixed(2)} cumplida`
                                   : `Falta recaudar S/ ${remainingMoney.toFixed(2)}`}
                               </span>
                               <span className={`font-mono font-bold ${
@@ -1472,18 +1489,18 @@ export const SuperAdminView: React.FC<Props> = ({
 
                     <div className="mt-4 pt-3 border-t border-[#E5E7EB]/80 flex items-center justify-end gap-1.5">
                       <button type="button" className="px-3 py-1.5 text-xs font-semibold border rounded-lg" onClick={()=>{setTicketSellerFilter(admin.id);setActiveTab('overview');setTimeout(()=>document.getElementById('booklet-review')?.scrollIntoView({behavior:'smooth'}),0);}}>Ver talonario</button>
-                      <button
+                      {admin.archivedAt ? <button type="button" className="px-3 py-1.5 text-xs border rounded-lg" onClick={()=>Promise.resolve(onSaveAdmin({...admin,archivedAt:null,status:'inactivo'})).catch(e=>alert(e.message))}>Restaurar cuenta</button> : admin.role!=='super_admin' && <button
                         onClick={() => handleEditAdmin(admin)}
                         className="p-1.5 text-[#4B5563] hover:text-[#0F1115] hover:bg-[#F5F5F3] rounded-lg transition-colors cursor-pointer"
                         title="Editar operador y contraseña"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      {admins.length > 1 && (
+                      </button>}
+                      {!admin.archivedAt && admin.role!=='super_admin' && (
                         <button
                           onClick={() => handleDeleteAdminClick(admin)}
                           className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Eliminar administrador"
+                          title="Retirar administrador (recuperable)"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

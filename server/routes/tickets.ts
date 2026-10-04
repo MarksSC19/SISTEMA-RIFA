@@ -46,7 +46,7 @@ router.post('/',async(req:AuthRequest,res)=>{
   const raffle=(await c.query('SELECT * FROM raffles WHERE id=$1 FOR SHARE',[raffleId])).rows[0];
   if(!raffle||raffle.status!=='activa')return stop(409,'La rifa no está abierta a ventas.');
   const seller=(await c.query('SELECT * FROM users WHERE id=$1 FOR UPDATE',[sellerId])).rows[0];
-  if(!seller||seller.status!=='active'||!seller.booklet_number||(req.user!.role!=='super_admin'&&seller.assigned_raffle_id!==raffleId))return stop(400,'Administrador inactivo, no asignado a la rifa o sin talonario.');
+  if(!seller||seller.status!=='active'||seller.archived_at||!seller.booklet_number||seller.assigned_raffle_id!==raffleId)return stop(400,'Administrador inactivo, no asignado a la rifa o sin talonario.');
   const start=(seller.booklet_number-1)*20+1;const end=seller.booklet_number*20;
   if(end>raffle.total_tickets)return stop(409,'Amplíe el total de números de la rifa para incluir este talonario.');
   const used=await c.query('SELECT ticket_number FROM tickets WHERE raffle_id=$1 AND ticket_number BETWEEN $2 AND $3',[raffleId,start,end]);

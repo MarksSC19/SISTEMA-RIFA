@@ -156,7 +156,7 @@ export default function App() {
           ]);
 
           if (isMounted) {
-            setSyncError(backendTickets===null || backendRaffles===null ? 'No se pudo actualizar la información del servidor. Las operaciones requieren conexión.' : '');
+            setSyncError(backendTickets===null || backendRaffles===null || backendAdmins===null || backendAudit===null ? 'No se pudo actualizar la información del servidor. Las operaciones requieren conexión.' : '');
             if (backendRaffles) setRaffles(backendRaffles);
             if (backendAdmins && Array.isArray(backendAdmins)) {
               setAdmins(backendAdmins);
@@ -390,12 +390,18 @@ export default function App() {
   // Admin CRUD
   const handleSaveAdmin = async (savedAdmin: AdminUser, password?: string, isNew?: boolean) => {
     const shouldCreate = Boolean(isNew || !savedAdmin.id || savedAdmin.id.startsWith('adm-new'));
+    const before=admins.find(a=>a.id===savedAdmin.id);
+    const normalize=(name:string)=>name.trim().replace(/\s+/g,' ').toUpperCase();
+    const checkDuplicate=shouldCreate || before?.archivedAt || (before && normalize(before.name)!==normalize(savedAdmin.name));
+    const duplicate=checkDuplicate && admins.find(a=>a.id!==savedAdmin.id&&!a.archivedAt&&normalize(a.name)===normalize(savedAdmin.name));
+    const allowSameName=!!duplicate && window.confirm(`Ya existe ${duplicate.name} con DNI ${duplicate.dni}. ¿Confirmas que la cuenta con DNI ${savedAdmin.dni} corresponde a otra persona?`);
+    if(duplicate&&!allowSameName)throw new Error('Revise la cuenta existente antes de guardar.');
 
     if (shouldCreate) {
-      const created=await api.createAdmin({name:savedAdmin.name,dni:savedAdmin.dni || '',email:savedAdmin.email,password,assignedQuota:savedAdmin.assignedQuota,assignedRaffleId:savedAdmin.assignedRaffleId});
+      const created=await api.createAdmin({name:savedAdmin.name,dni:savedAdmin.dni || '',email:savedAdmin.email,password,assignedQuota:savedAdmin.assignedQuota,assignedRaffleId:savedAdmin.assignedRaffleId,allowSameName});
       setAdmins(prev=>[...prev,created]);
     } else {
-      await api.updateAdmin(savedAdmin.id,{name:savedAdmin.name,dni:savedAdmin.dni,email:savedAdmin.email,status:savedAdmin.status,password,assignedQuota:savedAdmin.assignedQuota,assignedRaffleId:savedAdmin.assignedRaffleId});
+      await api.updateAdmin(savedAdmin.id,{name:savedAdmin.name,dni:savedAdmin.dni,email:savedAdmin.email,status:savedAdmin.status,password,assignedQuota:savedAdmin.assignedQuota,assignedRaffleId:savedAdmin.assignedRaffleId,allowSameName,restore:!!before?.archivedAt&&!savedAdmin.archivedAt});
       setAdmins(await api.getAdmins());
     }
 
@@ -504,13 +510,12 @@ export default function App() {
     if (currentUser) {
       setAdmins(prev => prev.map(a => {
         if (
-          (currentUser.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
-          (currentUser.dni && a.dni === currentUser.dni) || 
-          a.name === currentUser.name
+          newTickets.some(t=>t.sellerAdminId===a.id && t.raffleId===a.assignedRaffleId)
         ) {
           return {
             ...a,
-            totalSold: (a.totalSold || 0) + count,
+            totalSold: (a.totalSold || 0) + newTickets.filter(t=>t.sellerAdminId===a.id&&t.raffleId===a.assignedRaffleId).length,
+            totalCollected: (a.totalCollected || 0) + newTickets.filter(t=>t.sellerAdminId===a.id&&t.raffleId===a.assignedRaffleId).reduce((sum,t)=>sum+Number(t.price||0),0),
           };
         }
         return a;
@@ -528,7 +533,7 @@ export default function App() {
       action: 'Emisión de Tickets',
       user: currentUser?.name || 'Marks',
       raffle: activeRaffle.code,
-      detail: `Boletos ${numRange} emitidos a ${first.buyerName} (DNI ${first.dni}). Total: S/ ${(count * 10).toFixed(2)}.`,
+      detail: `Boletos ${numRange} emitidos a ${first.buyerName} (DNI ${first.dni}). Total: S/ ${newTickets.reduce((sum,t)=>sum+Number(t.price||0),0).toFixed(2)}.`,
     };
     setAuditLogs(prev => [newLog, ...prev]);
   };
@@ -586,10 +591,11 @@ export default function App() {
 
     if (target.registeredBy) {
       setAdmins(prev => prev.map(a => {
-        if (a.name === target.registeredBy) {
+        if (a.id === target.sellerAdminId && a.assignedRaffleId===target.raffleId) {
           return {
             ...a,
             totalSold: Math.max(0, (a.totalSold || 0) - 1),
+            totalCollected: Math.max(0,(a.totalCollected||0)-Number(target.price||0)),
           };
         }
         return a;

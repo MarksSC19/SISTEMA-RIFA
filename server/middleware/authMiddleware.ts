@@ -12,7 +12,7 @@ export async function requireSignedIn(req: AuthRequest, res: Response, next: Nex
   try {
     const result = await db.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
     const u = result.rows[0];
-    if (!u || u.status !== 'active' || decoded.credentialVersion !== credentialVersion(u.password_hash)) return res.status(401).json({ error: 'Sesión revocada. Inicie sesión nuevamente.' });
+    if (!u || u.status !== 'active' || u.archived_at || decoded.credentialVersion !== credentialVersion(u.password_hash)) return res.status(401).json({ error: 'Sesión revocada. Inicie sesión nuevamente.' });
     req.user = { id: u.id, email: u.email, role: u.role, name: u.full_name, mustChangePassword: u.must_change_password };
     next();
   } catch { res.status(503).json({ error: 'No se pudo validar la sesión.' }); }

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { requireAuth, requireSuperAdmin, AuthRequest } from '../middleware/authMiddleware';
+import { adminOperation, OperationError, writeAudit } from '../adminOperations';
 
 const router = Router();
 
@@ -35,30 +36,42 @@ router.get('/', async (req, res: Response) => {
 async function savePrize(req: any,res: any,create: boolean){
   const {name,category,description,order,raffleId,link}=req.body;
   if(typeof name!=='string'||!name.trim()||name.length>128||(order!==undefined&&(!Number.isInteger(order)||order<1)))return res.status(400).json({error:'Datos de premio inválidos.'});
-  try{
-    if(create){await db.query('INSERT INTO prizes(id,raffle_id,position,title,category,description,link) VALUES($1,$2,$3,$4,$5,$6,$7)',[req.body.id,raffleId,order,name.trim(),category||'General',description||'',link||'']);}
-    else{const r=await db.query('UPDATE prizes SET title=$1,category=COALESCE($2,category),description=COALESCE($3,description),position=COALESCE($4,position),link=COALESCE($5,link) WHERE id=$6 RETURNING id',[name.trim(),category,description,order,link,req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Premio no encontrado.'});}
-    res.status(create?201:200).json({success:true});
-  }catch(e:any){res.status(['23505','23503'].includes(e.code)?409:500).json({error:'Posición duplicada, rifa inexistente o datos de premio inválidos.'});}
+  return adminOperation(req,res,async c=>{
+    const id=create?req.body.id:req.params.id;
+    const scope=create?raffleId:(await c.query('SELECT raffle_id FROM prizes WHERE id=$1',[id])).rows[0]?.raffle_id;
+    if(!scope)throw new OperationError(404,'Premio o rifa no encontrado.');
+    await c.query('SELECT id FROM raffles WHERE id=$1 FOR UPDATE',[scope]);
+    const before=create?null:(await c.query('SELECT * FROM prizes WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if(create)await c.query('INSERT INTO prizes(id,raffle_id,position,title,category,description,link) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,raffleId,order,name.trim(),category||'General',description||'',link||'']);
+    else{const r=await c.query('UPDATE prizes SET title=$1,category=COALESCE($2,category),description=COALESCE($3,description),position=COALESCE($4,position),link=COALESCE($5,link) WHERE id=$6 RETURNING id',[name.trim(),category,description,order,link,id]);if(!r.rowCount)throw new OperationError(404,'Premio no encontrado.');}
+    await writeAudit(c,req,create?'CREAR_PREMIO':'EDITAR_PREMIO',id,{before,after:req.body});return {success:true};
+  },create?201:200);
 }
 router.post('/',requireSuperAdmin,(req,res)=>savePrize(req,res,true));
 router.put('/:id',requireSuperAdmin,(req,res)=>savePrize(req,res,false));
-router.delete('/:id',requireSuperAdmin,async(req,res)=>{
-  try{const r=await db.query('DELETE FROM prizes WHERE id=$1 AND winner_ticket_id IS NULL RETURNING id',[req.params.id]);if(!r.rowCount)return res.status(409).json({error:'Premio no encontrado o ya adjudicado.'});res.json({success:true});}catch{res.status(500).json({error:'No se pudo eliminar el premio.'});}
-});
+router.delete('/:id',requireSuperAdmin,(req:AuthRequest,res)=>adminOperation(req,res,async c=>{
+  const scope=(await c.query('SELECT raffle_id FROM prizes WHERE id=$1',[req.params.id])).rows[0]?.raffle_id;
+  if(!scope)throw new OperationError(404,'Premio no encontrado.');
+  await c.query('SELECT id FROM raffles WHERE id=$1 FOR UPDATE',[scope]);
+  const before=(await c.query('SELECT * FROM prizes WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+  const r=await c.query('DELETE FROM prizes WHERE id=$1 AND winner_ticket_id IS NULL RETURNING id',[req.params.id]);
+  if(!r.rowCount)throw new OperationError(409,'Premio no encontrado o ya adjudicado.');
+  await writeAudit(c,req,'ELIMINAR_PREMIO',req.params.id,{before});return {success:true};
+}));
 // POST /api/prizes/reset - Reiniciar adjudicaciones para nuevo sorteo (SuperAdmin)
 router.post('/reset', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    await db.query(`
+  return adminOperation(req,res,async c=> {
+    const raffleId=req.body.raffleId || 'rf-024';
+    if(!(await c.query('SELECT id FROM raffles WHERE id=$1 FOR UPDATE',[raffleId])).rowCount)throw new OperationError(404,'Rifa no encontrada.');
+    const before=(await c.query('SELECT * FROM prizes WHERE raffle_id=$1 AND winner_ticket_id IS NOT NULL FOR UPDATE',[raffleId])).rows;
+    await c.query(`
       UPDATE prizes 
       SET winner_ticket_id = NULL, winner_name = NULL, winner_phone = NULL, drawn_at = NULL
       WHERE raffle_id = $1
-    `, [req.body.raffleId || 'rf-024']);
-    res.json({ success: true, message: 'Sorteos de premios reiniciados exitosamente.' });
-  } catch (error: any) {
-    console.error('Error resetting prizes:', error);
-    res.status(500).json({ error: 'Error al reiniciar los premios.' });
-  }
+    `, [raffleId]);
+    await writeAudit(c,req,'REINICIAR_PREMIOS',raffleId,{previousWinners:before});
+    return { success: true, message: 'Sorteos de premios reiniciados exitosamente.' };
+  });
 });
 
 export default router;

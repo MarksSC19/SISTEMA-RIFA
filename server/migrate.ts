@@ -20,7 +20,9 @@ async function migrate() {
 
     await client.connect();
     console.log('Applying schema.sql to database...');
-    await client.query(schemaSql);
+    await client.query('BEGIN');
+    try { await client.query(schemaSql); await client.query('COMMIT'); }
+    catch(error) { await client.query('ROLLBACK'); throw error; }
     console.log('Schema applied successfully!');
 
     const tables = await client.query(`
@@ -67,7 +69,9 @@ async function migrate() {
 
   await dbClient.connect();
   console.log(`Applying schema to '${dbName}'...`);
-  await dbClient.query(schemaSql);
+  await dbClient.query('BEGIN');
+  try { await dbClient.query(schemaSql); await dbClient.query('COMMIT'); }
+  catch(error) { await dbClient.query('ROLLBACK'); throw error; }
   console.log('Schema applied successfully!');
 
   const tables = await dbClient.query(`

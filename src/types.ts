@@ -84,6 +84,9 @@ export interface Raffle {
 }
 
 export interface AdminUser {
+  role?: 'admin' | 'super_admin';
+  archivedAt?: string | null;
+  totalCollected?: number;
   bookletNumber?: number;
   id: string;
   name: string;

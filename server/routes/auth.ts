@@ -22,7 +22,7 @@ router.post('/login', async (req, res) => {
     const result = await db.query('SELECT * FROM users WHERE LOWER(TRIM(email)) = LOWER($1) OR TRIM(dni) = $1', [identifier.trim()]);
     const u = result.rows[0];
     if (!u || !(await bcrypt.compare(password, u.password_hash))) return res.status(401).json({ error: 'Credenciales inválidas.' });
-    if (u.status !== 'active') return res.status(403).json({ error: 'Usuario inactivo.' });
+    if (u.status !== 'active' || u.archived_at) return res.status(403).json({ error: 'Usuario inactivo.' });
     res.json({ token: issueToken(u), user: publicUser(u) });
   } catch { res.status(500).json({ error: 'No se pudo iniciar sesión.' }); }
 });
