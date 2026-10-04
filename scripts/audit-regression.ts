@@ -196,5 +196,8 @@ try {
   await pg.exec(fs.readFileSync('server/schema.sql','utf8'));
   assert.equal((await query("SELECT archived_at FROM users WHERE id='adm-23-alt'")).rows[0].archived_at,null);
   assert.equal((await query("SELECT status FROM tickets WHERE id='historical-cancelled'")).rows[0].status,'cancelled');
+  const capacity=(await query("SELECT total_tickets FROM raffles WHERE id='rf-024'")).rows[0].total_tickets;
+  const assignedMaximum=(await query("SELECT MAX(booklet_number)*20 AS needed FROM users WHERE assigned_raffle_id='rf-024' AND archived_at IS NULL")).rows[0].needed;
+  assert.ok(capacity>=assignedMaximum);assert.ok((await query("SELECT total_tickets FROM raffles WHERE id='rf-small'")).rows[0].total_tickets>=600);
   console.log('PASS: '+checks+' comprobaciones HTTP + migración repetible, numeración, cuotas y persistencia.');
 } finally { await new Promise<void>(resolve=>server.close(()=>resolve()));await pg.close();await db.pool.end(); }
