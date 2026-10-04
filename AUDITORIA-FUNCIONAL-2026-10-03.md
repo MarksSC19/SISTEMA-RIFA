@@ -15,7 +15,7 @@ El usuario autorizó aplicar y desplegar las correcciones. Se resolvió la fusi�
 
 Validación: 97 comprobaciones HTTP con PGlite, incluidas transacciones revertidas al fallar auditoría, archivo/restauración con ventas, homónimos, campañas, privacidad pública, precios mixtos y migración repetible con protección de historial. TypeScript y build correctos. Prueba visual con cuentas ficticias: retirada, filtro de archivados, restauración y conservación de un boleto de S/ 12 tras recargar. Permanece advertencia de tamaño del bundle (~634 kB).
 
-El primer despliegue nuevo (`3bab0af`) quedó Live en Render y respondió versión 1.5.0, PostgreSQL conectado, 66 boletos y S/ 660. El despliegue final se está verificando; su resultado se registra al finalizar este trabajo. No se ejecutaron ventas, sorteos ni cambios de contraseñas reales para probar.
+Despliegue final verificado: commit `fa5992a660fa664253f9756fc69616761306ef7d` en main, Render `dep-db0rf8uq1p3s73elvnrg`, estado «Deploy succeeded | Live», 3 de octubre de 2026 a las 21:20 (Lima). Los logs confirman migración aplicada y `historical_duplicate_archived: true`. `/api/health` devuelve versión 1.5.0, ese mismo commit y PostgreSQL conectado. Se conservan 66 boletos válidos, S/ 660 y 7 premios sin ganadores. La capacidad de campaña se amplió de 620 a 720 para cubrir talonarios ya asignados; los números emitidos no cambiaron. La consulta anónima `/api/public/verify/1` devuelve 404. La web pública carga correctamente. No se ejecutaron ventas, sorteos ni cambios de contraseñas reales para probar; los recorridos autenticados de gestión se verificaron con datos ficticios en ensayo.
 
 Los hallazgos siguientes describen el estado ANTERIOR a estas correcciones.
 
