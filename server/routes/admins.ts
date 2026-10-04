@@ -1,189 +1,76 @@
-import { Router, Response } from 'express';
+import { Router } from 'express';
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import db from '../db';
-import { requireAuth, requireSuperAdmin, AuthRequest } from '../middleware/authMiddleware';
-
+import { AuthRequest, requireSuperAdmin } from '../middleware/authMiddleware';
+import { publicUser } from '../security';
+import { adminOperation, OperationError, writeAudit } from '../adminOperations';
 const router = Router();
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+router.use(requireSuperAdmin);
+const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ').toUpperCase();
+const validEmail = (email: unknown) => typeof email === 'string' && email.length <= 128 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+async function checkName(client: any, name: string, id: string, allowSameName: unknown) {
+  const same = await client.query("SELECT id FROM users WHERE UPPER(REGEXP_REPLACE(TRIM(full_name),'\\s+',' ','g'))=$1 AND id<>$2 AND archived_at IS NULL", [normalizeName(name), id]);
+  if (same.rowCount && allowSameName !== true) throw new OperationError(409, 'Ya existe una cuenta con ese nombre. Revise el DNI y confirme si se trata de otra persona.');
 }
-
-// GET /api/admins - Lista de todos los admins con conteo de ventas en tiempo real
-router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/', async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT 
-        u.id,
-        u.full_name as name,
-        u.dni,
-        u.email,
-        u.quota as "assignedQuota",
-        u.status,
-        COUNT(t.id) FILTER (WHERE t.status = 'valid')::int as "totalSold"
-      FROM users u
-      LEFT JOIN tickets t ON t.seller_admin_id = u.id AND t.raffle_id = 'rf-024'
-      WHERE u.role = 'admin'
-      GROUP BY u.id, u.full_name, u.dni, u.email, u.quota, u.status
-      ORDER BY "totalSold" DESC, u.full_name ASC
-    `);
-
-    const admins = result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      dni: row.dni,
-      email: row.email,
-      assignedRafflesCount: 1,
-      totalSold: row.totalSold,
-      assignedQuota: row.assignedQuota || 20,
-      status: row.status === 'active' ? 'activo' : 'inactivo',
-      avatarInitials: getInitials(row.name),
-      assignedRaffleId: 'rf-024',
-    }));
-
-    res.json(admins);
-  } catch (error: any) {
-    console.error('Error fetching admins:', error);
-    res.status(500).json({ error: 'Error al obtener la lista de administradores.' });
-  }
+    const r = await db.query(`SELECT u.*, (SELECT COUNT(*)::int FROM tickets t WHERE t.seller_admin_id=u.id AND t.raffle_id=u.assigned_raffle_id AND t.status='valid') AS total_sold,
+      COALESCE((SELECT SUM(price_paid) FROM tickets t WHERE t.seller_admin_id=u.id AND t.raffle_id=u.assigned_raffle_id AND t.status='valid'),0)::float AS total_collected
+      FROM users u WHERE ($1::boolean OR u.archived_at IS NULL) ORDER BY u.booklet_number`, [req.query.includeArchived === 'true']);
+    res.json(r.rows.map(u => ({...publicUser(u),archivedAt:u.archived_at,status:u.status==='active'?'activo':'inactivo',totalSold:u.total_sold,totalCollected:u.total_collected,assignedRafflesCount:1})));
+  } catch { res.status(500).json({error:'No se pudo cargar administradores.'}); }
 });
-
-// POST /api/admins - Crear nuevo admin (SuperAdmin) con UPSERT
-router.post('/', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { name, dni, email, password } = req.body;
-    if (!name || !dni) {
-      return res.status(400).json({ error: 'Nombre y DNI son obligatorios.' });
-    }
-
-    const cleanDni = dni.trim();
-    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : `admin.${cleanDni}@rifas.pe`;
-    const cleanName = name.trim().toUpperCase();
-    const defaultPass = password && password.trim().length > 0 ? password.trim() : cleanDni;
-    const passwordHash = await bcrypt.hash(defaultPass, 10);
-    const newId = `adm-${Date.now()}`;
-
-    const insertRes = await db.query(
-      `INSERT INTO users (id, full_name, dni, email, password_hash, phone, role, status, quota, must_change_password)
-       VALUES ($1, $2, $3, $4, $5, '987654321', 'admin', 'active', 20, true)
-       ON CONFLICT (dni) DO UPDATE SET
-         full_name = EXCLUDED.full_name,
-         email = EXCLUDED.email,
-         password_hash = EXCLUDED.password_hash,
-         status = 'active',
-         must_change_password = true
-       RETURNING id, full_name as name, dni, email, quota as "assignedQuota", status`,
-      [newId, cleanName, cleanDni, cleanEmail, passwordHash]
-    );
-
-    const created = insertRes.rows[0] || {
-      id: newId,
-      name: cleanName,
-      dni: cleanDni,
-      email: cleanEmail,
-      assignedQuota: 20,
-      status: 'active',
-    };
-
-    res.status(201).json({
-      id: created.id,
-      name: created.name,
-      dni: created.dni,
-      email: created.email,
-      totalSold: 0,
-      assignedQuota: created.assignedQuota || 20,
-      status: created.status === 'active' ? 'activo' : 'inactivo',
-      avatarInitials: getInitials(created.name),
-      assignedRaffleId: 'rf-024',
-    });
-  } catch (error: any) {
-    console.error('Error creating admin:', error);
-    res.status(500).json({ error: 'Error al registrar administrador.' });
-  }
+router.post('/', async (req: AuthRequest, res) => {
+  const {name,dni,email,password,assignedQuota,assignedRaffleId,allowSameName} = req.body;
+  if (typeof name!=='string'||!name.trim()||name.length>128||typeof dni!=='string'||!/^\d{8}$/.test(dni.trim())||(assignedQuota!==undefined&&assignedQuota!==20)) return res.status(400).json({error:'Nombre, DNI o cuota inválidos.'});
+  const mail = typeof email==='string' && email.trim() ? email.trim().toLowerCase() : `admin.${dni.trim()}@rifas.pe`;
+  const pass = password || dni.trim();
+  if (!validEmail(mail)||typeof pass!=='string'||pass.trim().length<6||Buffer.byteLength(pass)>72) return res.status(400).json({error:'Correo o contraseña inválidos.'});
+  const hash = await bcrypt.hash(pass,12);
+  return adminOperation(req,res,async c => {
+    const raffleId = assignedRaffleId || 'rf-024';
+    if (!(await c.query('SELECT id FROM raffles WHERE id=$1 FOR UPDATE',[raffleId])).rowCount) throw new OperationError(400,'Rifa no encontrada.');
+    await c.query('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE');
+    const id = crypto.randomUUID(); await checkName(c,name,id,allowSameName);
+    const r = await c.query(`INSERT INTO users(id,full_name,dni,email,password_hash,phone,role,status,quota,must_change_password,assigned_raffle_id)
+      VALUES($1,$2,$3,$4,$5,'','admin','active',20,true,$6) RETURNING *`,[id,normalizeName(name),dni.trim(),mail,hash,raffleId]);
+    await c.query('UPDATE raffles SET total_tickets=GREATEST(total_tickets,$2) WHERE id=$1',[raffleId,r.rows[0].booklet_number*20]);
+    await writeAudit(c,req,'CREAR_ADMINISTRADOR',id,{name:normalizeName(name),dni:dni.trim(),raffleId,allowSameName:allowSameName===true});
+    return {...publicUser(r.rows[0]),archivedAt:null,totalSold:0,totalCollected:0,assignedRafflesCount:1,status:'activo'};
+  },201);
 });
-
-// PUT /api/admins/:id - Actualizar admin o insertar si no existe (UPSERT)
-router.put('/:id', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, dni, email, status, password } = req.body;
-
-    const cleanDni = dni ? dni.trim() : null;
-    const cleanEmail = email ? email.trim().toLowerCase() : null;
-    const cleanName = name ? name.trim().toUpperCase() : null;
-    const cleanStatus = status ? (status === 'activo' ? 'active' : 'inactive') : null;
-
-    let updateRes;
-    if (password && password.trim().length > 0) {
-      const passwordHash = await bcrypt.hash(password.trim(), 10);
-      updateRes = await db.query(
-        `UPDATE users 
-         SET full_name = COALESCE($1, full_name), 
-             dni = COALESCE($2, dni), 
-             email = COALESCE($3, email), 
-             status = COALESCE($4, status),
-             password_hash = $5,
-             must_change_password = false
-         WHERE id = $6 OR (dni = $2 AND $2 IS NOT NULL)`,
-        [cleanName, cleanDni, cleanEmail, cleanStatus, passwordHash, id]
-      );
-    } else {
-      updateRes = await db.query(
-        `UPDATE users 
-         SET full_name = COALESCE($1, full_name), 
-             dni = COALESCE($2, dni), 
-             email = COALESCE($3, email), 
-             status = COALESCE($4, status)
-         WHERE id = $5 OR (dni = $2 AND $2 IS NOT NULL)`,
-        [cleanName, cleanDni, cleanEmail, cleanStatus, id]
-      );
-    }
-
-    // Si no existía el usuario en BD, lo insertamos para garantizar su acceso
-    if (updateRes.rowCount === 0 && cleanDni) {
-      const effectivePass = password && password.trim().length > 0 ? password.trim() : cleanDni;
-      const initialHash = await bcrypt.hash(effectivePass, 10);
-      const newId = id && id.startsWith('adm-') ? id : `adm-${Date.now()}`;
-      await db.query(
-        `INSERT INTO users (id, full_name, dni, email, password_hash, phone, role, status, quota, must_change_password)
-         VALUES ($1, $2, $3, $4, $5, '987654321', 'admin', $6, 20, $7)
-         ON CONFLICT (dni) DO UPDATE SET
-           full_name = EXCLUDED.full_name,
-           email = EXCLUDED.email,
-           password_hash = EXCLUDED.password_hash,
-           status = EXCLUDED.status,
-           must_change_password = EXCLUDED.must_change_password`,
-        [
-          newId, 
-          cleanName || 'ADMINISTRADOR', 
-          cleanDni, 
-          cleanEmail || `${cleanDni}@rifas.pe`, 
-          initialHash, 
-          cleanStatus || 'active', 
-          password ? false : true
-        ]
-      );
-    }
-
-    res.json({ success: true, message: 'Administrador actualizado correctamente.' });
-  } catch (error: any) {
-    console.error('Error updating admin:', error);
-    res.status(500).json({ error: 'Error al actualizar administrador.' });
-  }
+router.put('/:id', async (req: AuthRequest,res) => {
+  const {name,dni,email,status,password,assignedQuota,assignedRaffleId,restore,allowSameName} = req.body;
+  if ((assignedQuota!==undefined&&assignedQuota!==20)||(name!==undefined&&(typeof name!=='string'||!name.trim()||name.length>128))||(dni!==undefined&&(typeof dni!=='string'||!/^\d{8}$/.test(dni.trim())))||(email!==undefined&&!validEmail(email))||(status!==undefined&&!['activo','inactivo'].includes(status))||(restore!==undefined&&typeof restore!=='boolean')) return res.status(400).json({error:'Datos inválidos.'});
+  if (password && (typeof password!=='string'||password.trim().length<6||Buffer.byteLength(password)>72)) return res.status(400).json({error:'Contraseña inválida.'});
+  const hash = password ? await bcrypt.hash(password,12) : null;
+  return adminOperation(req,res,async c => {
+    // Lock campaigns before users, matching ticket issuance and creation.
+    if (assignedRaffleId && !(await c.query('SELECT id FROM raffles WHERE id=$1 FOR UPDATE',[assignedRaffleId])).rowCount) throw new OperationError(400,'Rifa no encontrada.');
+    await c.query('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE');
+    const before = (await c.query("SELECT * FROM users WHERE id=$1 AND role='admin' FOR UPDATE",[req.params.id])).rows[0];
+    if (!before) throw new OperationError(404,'Administrador no encontrado.');
+    if (before.archived_at && restore !== true) throw new OperationError(409,'Restaure la cuenta antes de editarla.');
+    if ((name && normalizeName(name)!==normalizeName(before.full_name)) || restore===true) await checkName(c,name || before.full_name,before.id,allowSameName);
+    await c.query(`UPDATE users SET full_name=COALESCE($1,full_name),dni=COALESCE($2,dni),email=COALESCE($3,email),status=COALESCE($4,status),
+      password_hash=COALESCE($5,password_hash),must_change_password=CASE WHEN $5::text IS NULL THEN must_change_password ELSE true END,
+      assigned_raffle_id=COALESCE($7,assigned_raffle_id),archived_at=CASE WHEN $8::boolean THEN NULL ELSE archived_at END WHERE id=$6`,
+      [name?normalizeName(name):null,dni?.trim(),email?.trim().toLowerCase(),status===undefined?null:status==='activo'?'active':'inactive',hash,before.id,assignedRaffleId,restore===true]);
+    if (assignedRaffleId) await c.query('UPDATE raffles SET total_tickets=GREATEST(total_tickets,$2) WHERE id=$1',[assignedRaffleId,before.booklet_number*20]);
+    await writeAudit(c,req,restore?'RESTAURAR_ADMINISTRADOR':'EDITAR_ADMINISTRADOR',before.id,{before:{name:before.full_name,dni:before.dni,status:before.status,raffleId:before.assigned_raffle_id},after:{name,dni,email,status,raffleId:assignedRaffleId},passwordReset:!!hash});
+    return {success:true};
+  });
 });
-
-// DELETE /api/admins/:id - Eliminar admin
-router.delete('/:id', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    await db.query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'admin']);
-    res.json({ success: true, message: 'Administrador eliminado.' });
-  } catch (error: any) {
-    console.error('Error deleting admin:', error);
-    res.status(500).json({ error: 'Error al eliminar administrador.' });
+// Recoverable removal. Never delete or reassign historical tickets.
+router.delete('/:id',(req: AuthRequest,res)=>adminOperation(req,res,async c=>{
+  const before=(await c.query("SELECT * FROM users WHERE id=$1 AND role='admin' FOR UPDATE",[req.params.id])).rows[0];
+  if (!before) throw new OperationError(404,'Administrador no encontrado.');
+  if (!before.archived_at) {
+    await c.query("UPDATE users SET status='inactive',archived_at=CURRENT_TIMESTAMP WHERE id=$1",[before.id]);
+    const history=await c.query('SELECT COUNT(*)::int AS total FROM tickets WHERE seller_admin_id=$1',[before.id]);
+    await writeAudit(c,req,'ARCHIVAR_ADMINISTRADOR',before.id,{name:before.full_name,ticketsPreserved:history.rows[0].total});
   }
-});
-
+  return {success:true,message:'Administrador retirado del listado. Cuenta recuperable e historial conservado.'};
+}));
 export default router;

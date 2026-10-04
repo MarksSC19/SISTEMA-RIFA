@@ -17,7 +17,7 @@ export const MustChangePasswordModal: React.FC<Props> = ({
   onPasswordChanged,
   onLogout,
 }) => {
-  const [currentPassword, setCurrentPassword] = useState(currentUser.dni || '');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -54,7 +54,7 @@ export const MustChangePasswordModal: React.FC<Props> = ({
     setIsSubmitting(true);
 
     try {
-      const response = await api.changePassword(currentPassword.trim(), newPassword.trim(), currentUser.dni);
+      const response = await api.changePassword(currentPassword, newPassword, currentUser.dni);
       if (response && response.token) {
         localStorage.setItem('rifas_jwt_token', response.token);
       }
@@ -121,8 +121,8 @@ export const MustChangePasswordModal: React.FC<Props> = ({
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  type="text"
-                  inputMode="numeric"
+                  type="password"
+                  autoComplete="current-password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Ingrese su DNI actual"

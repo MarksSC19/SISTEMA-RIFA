@@ -3,6 +3,8 @@ export type PlatformRole = 'super_admin' | 'admin' | 'live_draw' | 'verification
 export type RaffleStatus = 'activa' | 'cerrada' | 'sorteo' | 'borrador';
 
 export interface AuthUser {
+  bookletNumber?: number;
+  phone?: string;
   id: string;
   name: string;
   email: string;
@@ -15,6 +17,10 @@ export interface AuthUser {
 }
 
 export interface Prize {
+  winnerTicketId?: string;
+  winnerName?: string;
+  winnerPhone?: string;
+  drawnAt?: string;
   id: string;
   raffleId: string;
   order: number; // 1 = 1er premio, 2 = 2do premio, etc.
@@ -34,6 +40,12 @@ export interface Prize {
 }
 
 export interface Ticket {
+  sellerAdminId?: string;
+  price?: number;
+  status?: string;
+  paymentMethod?: string;
+  verificationHash?: string;
+  purchaseDate?: string;
   id: string;
   number: number;
   formattedNumber: string;
@@ -72,6 +84,10 @@ export interface Raffle {
 }
 
 export interface AdminUser {
+  role?: 'admin' | 'super_admin';
+  archivedAt?: string | null;
+  totalCollected?: number;
+  bookletNumber?: number;
   id: string;
   name: string;
   dni?: string;

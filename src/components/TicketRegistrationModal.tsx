@@ -26,6 +26,8 @@ interface Props {
   nextTicketNumber: number;
   raffleTitle: string;
   raffleCode: string;
+  raffleId?: string;
+  ticketPrice?: number;
   onTicketCreated?: (ticket: Ticket) => void;
   onTicketsCreated?: (tickets: Ticket[]) => void;
   onViewVerification?: (ticket: Ticket) => void;
@@ -41,6 +43,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
   nextTicketNumber,
   raffleTitle,
   raffleCode,
+  raffleId = 'rf-024',
+  ticketPrice = 10,
   onTicketCreated,
   onTicketsCreated,
   onViewVerification,
@@ -110,7 +114,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!buyerName.trim()) return;
+    if(isSubmitting)return;
+    if (!buyerName.trim() || !/^\d{8}$/.test(dni.trim()) || !/^\d{9}$/.test(phone.trim())) {alert('Ingrese nombre, DNI de 8 dígitos y celular de 9 dígitos.');return;}
 
     setIsSubmitting(true);
 
@@ -122,6 +127,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
         phone: phone.trim() || 'No especificado',
         paymentMethod: 'efectivo',
         quantity: quantity,
+        raffleId,
       });
 
       const serverTickets = res.createdTickets || [res];
@@ -130,7 +136,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
         id: st.id || `t-${st.number}`,
         number: st.number,
         formattedNumber: st.formattedNumber,
-        raffleId: 'rf-024',
+        raffleId: st.raffleId,
         buyerName: st.buyerName,
         dni: st.dni,
         phone: st.phone,
@@ -138,6 +144,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
         timeFormatted: st.timeFormatted || new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
         verificationCode: st.verificationCode,
         isValid: true,
+        sellerAdminId: st.sellerAdminId,
+        price: Number(st.price),
         registeredBy: st.registeredBy || registeredByName || 'Administrador Autorizado',
       }));
 
@@ -153,49 +161,8 @@ export const TicketRegistrationModal: React.FC<Props> = ({
       setIsSubmitting(false);
       return;
     } catch (apiErr: any) {
-      if (apiErr.message && (apiErr.message.includes('Talonario') || apiErr.message.includes('Cuota'))) {
-        alert(apiErr.message);
-        setIsSubmitting(false);
-        return;
-      }
-      console.warn('API fallback to local generation:', apiErr);
-    }
-
-    // Fallback local con números preasignados del talonario
-    const now = new Date();
-    const timeFormatted = formatPeruTime(now);
-    const dateFormatted = formatPeruDateIso(now);
-
-    const localList: Ticket[] = [];
-    for (let i = 0; i < quantity; i++) {
-      const num = projectedNumbers[i];
-      const vCode = generateVerificationCode(num);
-      localList.push({
-        id: `t-${num}`,
-        number: num,
-        formattedNumber: `#${String(num).padStart(4, '0')}`,
-        raffleId: 'rf-024',
-        buyerName: buyerName.trim(),
-        dni: dni.trim() || 'No especificado',
-        phone: phone.trim() || 'No especificado',
-        timestamp: dateFormatted,
-        timeFormatted,
-        verificationCode: vCode,
-        isValid: true,
-        registeredBy: registeredByName || 'Administrador Autorizado',
-      });
-    }
-
-    setCreatedTickets(localList);
-    setActiveTicketIndex(0);
-
-    if (onTicketsCreated) {
-      onTicketsCreated(localList);
-    } else if (onTicketCreated) {
-      localList.forEach(t => onTicketCreated(t));
-    }
-
-    setIsSubmitting(false);
+      alert(apiErr.message || 'No se pudo registrar la venta. No se emitieron boletos.');
+    } finally { setIsSubmitting(false); }
   };
 
   const currentCreatedTicket = createdTickets[activeTicketIndex] || createdTickets[0];
@@ -212,7 +179,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
     if (!currentCreatedTicket || createdTickets.length === 0) return;
 
     const verifyUrl = getTicketVerificationUrl(currentCreatedTicket.verificationCode, currentCreatedTicket.number);
-    const totalSoles = createdTickets.length * 10;
+    const totalSoles = createdTickets.reduce((sum,t)=>sum+Number(t.price ?? ticketPrice),0);
     const timeText = formatPeruTime(currentCreatedTicket.timestamp || new Date());
 
     let text = '';
@@ -222,7 +189,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
         `🔢 *Número:* ${currentCreatedTicket.formattedNumber}\n` +
         `👤 *Titular:* ${currentCreatedTicket.buyerName}\n` +
         `🪪 *DNI:* ${currentCreatedTicket.dni}\n` +
-        `💰 *Monto Abonado:* S/ 10.00\n` +
+        `💰 *Monto Abonado:* S/ ${Number(currentCreatedTicket.price ?? ticketPrice).toFixed(2)}\n` +
         `🔐 *Código Único:* ${currentCreatedTicket.verificationCode}\n` +
         `🕒 *Registro (Hora Perú):* ${timeText}\n\n` +
         `🌐 *Verifica tu ticket en línea:* ${verifyUrl}\n\n` +
@@ -236,7 +203,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
         `📌 *Rifa:* ${raffleTitle} (${raffleCode})\n` +
         `👤 *Titular:* ${currentCreatedTicket.buyerName}\n` +
         `🪪 *DNI:* ${currentCreatedTicket.dni}\n` +
-        `💰 *Total Pagado:* S/ ${totalSoles}.00 (${createdTickets.length} tickets x S/ 10)\n` +
+        `💰 *Total Pagado:* S/ ${totalSoles.toFixed(2)} (${createdTickets.length} tickets x S/ ${ticketPrice.toFixed(2)})\n` +
         `🕒 *Registro (Hora Perú):* ${timeText}\n\n` +
         `📋 *Tus Boletos Registrados:*\n${ticketsListText}\n\n` +
         `🌐 *Verifica en línea buscando por tu DNI (${currentCreatedTicket.dni}):*\n${verifyUrl}\n\n` +
@@ -350,7 +317,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                         Cantidad de Boletos
                       </span>
                       <span className="text-[11px] text-slate-500 block">
-                        S/ 10.00 por boleto
+                        S/ {ticketPrice.toFixed(2)} por boleto
                       </span>
                     </div>
 
@@ -417,7 +384,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
                     <div className="text-right">
                       <span className="text-slate-500 block text-[10px] uppercase font-bold">Total a Cobrar</span>
                       <span className="text-sm font-extrabold text-emerald-600 font-mono">
-                        S/ {(quantity * 10).toFixed(2)}
+                        S/ {(quantity * ticketPrice).toFixed(2)}
                       </span>
                     </div>
                   </div>

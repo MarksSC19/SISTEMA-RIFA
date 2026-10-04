@@ -1,314 +1,89 @@
-import { Router, Response } from 'express';
-import crypto from 'crypto';
+import { Router } from 'express';
+import crypto from 'node:crypto';
 import db from '../db';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
-
-const router = Router();
-
-// GET /api/tickets - Listar tickets
-router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { sellerId, search } = req.query;
-    let query = `
-      SELECT 
-        t.id,
-        t.ticket_number as number,
-        ('#' || LPAD(t.ticket_number::text, 4, '0')) as "formattedNumber",
-        t.ticket_code as "verificationCode",
-        t.raffle_id as "raffleId",
-        t.buyer_name as "buyerName",
-        t.buyer_dni as dni,
-        t.buyer_phone as phone,
-        t.payment_method as "paymentMethod",
-        t.payment_reference as "paymentReference",
-        t.price_paid as price,
-        t.status,
-        (t.status = 'valid') as "isValid",
-        t.sold_at as timestamp,
-        TO_CHAR(t.sold_at AT TIME ZONE 'America/Lima', 'HH12:MI AM') as "timeFormatted",
-        u.full_name as "registeredBy",
-        t.seller_admin_id as "sellerAdminId",
-        t.verification_hash as "verificationHash"
-      FROM tickets t
-      LEFT JOIN users u ON u.id = t.seller_admin_id
-      WHERE t.raffle_id = 'rf-024'
-    `;
-    const params: any[] = [];
-
-    // Si el usuario es un administrador operador (no super_admin), aislar obligatoriamente sus ventas
-    if (req.user?.role !== 'super_admin') {
-      params.push(req.user?.id);
-      query += ` AND t.seller_admin_id = $${params.length}`;
-    } else if (sellerId) {
-      params.push(sellerId);
-      query += ` AND t.seller_admin_id = $${params.length}`;
-    }
-
-    if (search) {
-      params.push(`%${search}%`);
-      query += ` AND (t.buyer_name ILIKE $${params.length} OR t.buyer_dni ILIKE $${params.length} OR t.ticket_code ILIKE $${params.length})`;
-    }
-
-    query += ' ORDER BY t.ticket_number DESC';
-
-    const result = await db.query(query, params);
-    res.json(result.rows);
-  } catch (error: any) {
-    console.error('Error listing tickets:', error);
-    res.status(500).json({ error: 'Error al obtener tickets.' });
-  }
+const router=Router();
+router.use(requireAuth);
+const columns=`t.id,t.ticket_number AS number,('#'||LPAD(t.ticket_number::text,4,'0')) AS "formattedNumber",
+ t.ticket_code AS "verificationCode",t.raffle_id AS "raffleId",t.buyer_name AS "buyerName",t.buyer_dni AS dni,
+ t.buyer_phone AS phone,t.payment_method AS "paymentMethod",t.payment_reference AS "paymentReference",
+ t.price_paid::float AS price,t.status,(t.status='valid') AS "isValid",t.sold_at AS timestamp,
+ TO_CHAR(t.sold_at AT TIME ZONE 'America/Lima','HH12:MI AM') AS "timeFormatted",
+ (SELECT full_name FROM users WHERE id=t.seller_admin_id) AS "registeredBy",t.seller_admin_id AS "sellerAdminId",t.verification_hash AS "verificationHash"`;
+function buyerValid(b:any){return typeof b.buyerName==='string' && b.buyerName.trim().length>0 && b.buyerName.length<=128 && typeof b.dni==='string' && /^\d{8}$/.test(b.dni.trim()) && typeof b.phone==='string' && /^\d{9}$/.test(b.phone.trim());}
+async function audit(client:any,req:AuthRequest,action:string,target:string,detail:any){
+ await client.query('LOCK TABLE audit_logs IN EXCLUSIVE MODE');
+ const previous=await client.query('SELECT hash_signature FROM audit_logs ORDER BY created_at DESC,id DESC LIMIT 1');
+ const previousHash=previous.rows[0]?.hash_signature || 'GENESIS';
+ const id=crypto.randomUUID(); const details=JSON.stringify(detail); const actor=req.user!.name;
+ const hash=crypto.createHash('sha256').update(JSON.stringify({id,action,actor,target,details,previousHash})).digest('hex');
+ await client.query('INSERT INTO audit_logs(id,action,performed_by,target,details,hash_signature,previous_hash) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,action,actor,target,details,hash,previousHash]);
+}
+async function transaction(req:AuthRequest,res:any,work:(client:any)=>Promise<any>){
+ let client:any;
+ try {client=await db.getClient();await client.query('BEGIN');await work(client);}
+ catch(e:any){if(client)await client.query('ROLLBACK');res.status(e.code==='23505'?409:503).json({error:e.code==='23505'?'El número de boleto ya fue emitido. Actualice el talonario.':'No se pudo guardar la operación. Intente nuevamente.'});}
+ finally{client?.release();}
+}
+router.get('/',async(req:AuthRequest,res)=>{
+ try{
+  const params:any[]=[]; const filters=['1=1'];
+  const seller=req.user!.role==='super_admin'?req.query.sellerId:req.user!.id;
+  if(seller){params.push(seller);filters.push('t.seller_admin_id = $'+params.length);}
+  if(typeof req.query.raffleId==='string'){params.push(req.query.raffleId);filters.push('t.raffle_id = $'+params.length);}
+  if(typeof req.query.search==='string'){params.push('%'+req.query.search+'%');filters.push('(t.buyer_name ILIKE $'+params.length+' OR t.buyer_dni ILIKE $'+params.length+' OR t.ticket_code ILIKE $'+params.length+')');}
+  const result=await db.query('SELECT '+columns+' FROM tickets t WHERE '+filters.join(' AND ')+' ORDER BY t.ticket_number DESC',params);res.json(result.rows);
+ }catch{res.status(503).json({error:'No se pudo cargar el talonario.'});}
 });
-
-// POST /api/tickets - Registrar venta de ticket con validación de cuota de 20
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
-  const client = await db.getClient();
-  try {
-    const { buyerName, dni, phone, paymentMethod, paymentReference } = req.body;
-    const sellerId = req.body.sellerAdminId || req.user?.id;
-
-    if (!buyerName || !dni || !phone) {
-      return res.status(400).json({ error: 'Nombre del comprador, DNI y Celular son requeridos.' });
-    }
-
-    await client.query('BEGIN');
-
-    const quantity = Math.max(1, parseInt(req.body.quantity || '1', 10));
-
-    // 1. Identificar el administrador y su número de talonario exclusivo (1 a 31)
-    const userRes = await client.query(
-      `SELECT id, dni, role, full_name FROM users WHERE id = $1 OR dni = $1 LIMIT 1`,
-      [sellerId]
-    );
-    const sellerUser = userRes.rows[0];
-
-    const ADMIN_DNI_MAP: { [dni: string]: number } = {
-      '74765137': 1, '70905188': 2, '72795283': 3, '71745804': 4,
-      '72741502': 5, '74602585': 6, '71694983': 7, '76564148': 8,
-      '74898956': 9, '75510293': 10, '72809187': 11, '75701962': 12,
-      '73868636': 13, '73997851': 14, '70240574': 15, '75315104': 16,
-      '74960683': 17, '77801287': 18, '60906074': 19, '71780194': 20,
-      '77801288': 21, '75075018': 22, '72095575': 23, '71247028': 24,
-      '77529113': 25, '70916278': 26, '72740540': 27, '74395059': 28,
-      '73523144': 29, '75020702': 30, '70401427': 31,
-    };
-
-    let adminN = 2; // Por defecto Jheyson (Admin 2)
-    const admMatch = String(sellerId).match(/adm-(\d+)/i);
-    if (admMatch) {
-      adminN = parseInt(admMatch[1], 10);
-    } else if (sellerUser && sellerUser.dni && ADMIN_DNI_MAP[sellerUser.dni]) {
-      adminN = ADMIN_DNI_MAP[sellerUser.dni];
-    } else if (ADMIN_DNI_MAP[String(sellerId)]) {
-      adminN = ADMIN_DNI_MAP[String(sellerId)];
-    }
-    adminN = Math.max(1, Math.min(31, adminN));
-
-    // 2. Calcular rango de talonario único: 20 números por administrador
-    const startNum = (adminN - 1) * 20 + 1;
-    const endNum = adminN * 20;
-
-    // 3. Buscar números ya emitidos dentro del talonario de este administrador
-    const occupiedCheck = await client.query(
-      `SELECT ticket_number FROM tickets 
-       WHERE raffle_id = 'rf-024' 
-         AND ticket_number BETWEEN $1 AND $2 
-         AND status = 'valid'
-       ORDER BY ticket_number ASC`,
-      [startNum, endNum]
-    );
-    const occupiedNumbers = new Set<number>(occupiedCheck.rows.map(r => r.ticket_number));
-    const availableNumbers: number[] = [];
-    for (let n = startNum; n <= endNum; n++) {
-      if (!occupiedNumbers.has(n)) {
-        availableNumbers.push(n);
-      }
-    }
-
-    if (availableNumbers.length < quantity) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        error: `Talonario insuficiente: a este administrador solo le quedan ${availableNumbers.length} ticket(s) en su talonario asignado (#${String(startNum).padStart(4, '0')} al #${String(endNum).padStart(4, '0')}). Intentó emitir ${quantity}.`,
-      });
-    }
-
-    const assignedNumbers = availableNumbers.slice(0, quantity);
-    const actualSellerId = sellerUser?.id || sellerId;
-    const createdList = [];
-
-    for (let i = 0; i < quantity; i++) {
-      const nextNumber = assignedNumbers[i];
-      const ticketId = `t-${Date.now()}-${nextNumber}-${i}`;
-      const codeRandomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
-      const ticketCode = `TK-024-${nextNumber}-${codeRandomPart}`;
-
-      // 4. Generar hash criptográfico SHA-256 de autenticidad inmutable
-      const hashData = `${nextNumber}|${dni.trim()}|${actualSellerId}|${Date.now()}-${i}`;
-      const verificationHash = crypto.createHash('sha256').update(hashData).digest('hex');
-
-      // 5. Insertar ticket en la base de datos
-      const insertTicket = await client.query(
-        `INSERT INTO tickets (
-          id, ticket_number, ticket_code, raffle_id, seller_admin_id,
-          buyer_name, buyer_phone, buyer_dni, payment_method, payment_reference,
-          price_paid, verification_hash, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 10.00, $11, 'valid')
-        RETURNING *`,
-        [
-          ticketId,
-          nextNumber,
-          ticketCode,
-          'rf-024',
-          actualSellerId,
-          buyerName.trim().toUpperCase(),
-          phone.trim(),
-          dni.trim(),
-          paymentMethod || 'efectivo',
-          paymentReference ? paymentReference.trim() : null,
-          verificationHash,
-        ]
-      );
-
-      createdList.push(insertTicket.rows[0]);
-    }
-
-    // 5. Registrar en auditoría
-    const auditId = `aud-${Date.now()}`;
-    const auditHash = crypto.createHash('sha256').update(`EMIT_TICKETS_${createdList[0].ticket_code}_QTY_${quantity}`).digest('hex');
-    await client.query(
-      `INSERT INTO audit_logs (id, action, performed_by, target, details, hash_signature, previous_hash)
-       VALUES ($1, 'EMISIÓN_TICKETS_MULTIPLE', $2, $3, $4, $5, 'GENESIS')`,
-      [
-        auditId,
-        req.user?.name || 'ADMIN',
-        `Lote de ${quantity} ticket(s)`,
-        JSON.stringify({ buyer: buyerName, dni, seller: sellerId, quantity, numbers: createdList.map(t => t.ticket_number) }),
-        auditHash,
-      ]
-    );
-
-    await client.query('COMMIT');
-
-    const mappedList = createdList.map(created => ({
-      id: created.id,
-      number: created.ticket_number,
-      formattedNumber: `#${String(created.ticket_number).padStart(4, '0')}`,
-      verificationCode: created.ticket_code,
-      raffleId: created.raffle_id,
-      buyerName: created.buyer_name,
-      dni: created.buyer_dni,
-      phone: created.buyer_phone,
-      paymentMethod: created.payment_method,
-      price: created.price_paid,
-      isValid: true,
-      timestamp: created.sold_at,
-      timeFormatted: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-      registeredBy: req.user?.name || 'ADMIN',
-      sellerAdminId: created.seller_admin_id,
-      verificationHash: created.verification_hash,
-    }));
-
-    res.status(201).json({
-      ...mappedList[0],
-      createdTickets: mappedList,
-      quantity,
-      totalPaid: quantity * 10,
-    });
-  } catch (error: any) {
-    await client.query('ROLLBACK');
-    console.error('Error creating tickets:', error);
-    res.status(500).json({ error: 'Error al emitir los tickets en la base de datos.' });
-  } finally {
-    client.release();
+router.post('/',async(req:AuthRequest,res)=>{
+ const b=req.body;const quantity=b.quantity??1;
+ if(!buyerValid(b)||!Number.isInteger(quantity)||quantity<1||quantity>20||(b.paymentMethod&&!['yape','plin','efectivo','transferencia'].includes(b.paymentMethod))||(b.paymentReference!==undefined&&(typeof b.paymentReference!=='string'||b.paymentReference.length>64)))return res.status(400).json({error:'Nombre, DNI de 8 dígitos, celular de 9 dígitos, pago o cantidad (1 a 20) inválidos.'});
+ if(req.user!.role!=='super_admin'&&b.sellerAdminId&&b.sellerAdminId!==req.user!.id)return res.status(403).json({error:'No puede emitir boletos de otro administrador.'});
+ const sellerId=req.user!.role==='super_admin'?(b.sellerAdminId||req.user!.id):req.user!.id;
+ const raffleId=b.raffleId||'rf-024';
+ return transaction(req,res,async c=>{
+  const stop=async(status:number,error:string)=>{await c.query('ROLLBACK');res.status(status).json({error});};
+  const raffle=(await c.query('SELECT * FROM raffles WHERE id=$1 FOR SHARE',[raffleId])).rows[0];
+  if(!raffle||raffle.status!=='activa')return stop(409,'La rifa no está abierta a ventas.');
+  const seller=(await c.query('SELECT * FROM users WHERE id=$1 FOR UPDATE',[sellerId])).rows[0];
+  if(!seller||seller.status!=='active'||seller.archived_at||!seller.booklet_number||seller.assigned_raffle_id!==raffleId)return stop(400,'Administrador inactivo, no asignado a la rifa o sin talonario.');
+  const start=(seller.booklet_number-1)*20+1;const end=seller.booklet_number*20;
+  if(end>raffle.total_tickets)return stop(409,'Amplíe el total de números de la rifa para incluir este talonario.');
+  const used=await c.query('SELECT ticket_number FROM tickets WHERE raffle_id=$1 AND ticket_number BETWEEN $2 AND $3',[raffleId,start,end]);
+  const occupied=new Set(used.rows.map((r:any)=>r.ticket_number));const free=Array.from({length:20},(_,i)=>start+i).filter(n=>!occupied.has(n));
+  if(quantity>free.length)return stop(400,'Talonario insuficiente: quedan '+free.length+' números sin emitir.');
+  const created=[];
+  for(const number of free.slice(0,quantity)){
+   const id=crypto.randomUUID();const code='TK-'+number+'-'+crypto.randomBytes(6).toString('hex').toUpperCase();
+   const hash=crypto.createHash('sha256').update(id+'|'+code+'|'+raffleId+'|'+seller.id+'|'+b.dni.trim()).digest('hex');
+   await c.query(`INSERT INTO tickets(id,ticket_number,ticket_code,raffle_id,seller_admin_id,buyer_name,buyer_phone,buyer_dni,payment_method,payment_reference,price_paid,verification_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[id,number,code,raffleId,seller.id,b.buyerName.trim().toUpperCase(),b.phone.trim(),b.dni.trim(),b.paymentMethod||'efectivo',b.paymentReference||null,raffle.ticket_price,hash]);
+   created.push((await c.query('SELECT '+columns+' FROM tickets t WHERE id=$1',[id])).rows[0]);
   }
+  await audit(c,req,'EMISION_TICKETS',raffleId,{seller:seller.id,numbers:created.map(t=>t.number)});
+  await c.query('COMMIT');res.status(201).json({...created[0],createdTickets:created,quantity,totalPaid:quantity*Number(raffle.ticket_price)});
+ });
 });
-
-// PUT /api/tickets/:id - Modificar datos del comprador
-router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { buyerName, dni, phone } = req.body;
-
-    if (!buyerName || !dni) {
-      return res.status(400).json({ error: 'El nombre del comprador y el DNI son obligatorios.' });
-    }
-
-    const cleanName = buyerName.trim().toUpperCase();
-    const cleanDni = dni.trim();
-    const cleanPhone = phone ? phone.trim() : '';
-
-    let query = `
-      UPDATE tickets 
-      SET buyer_name = $1, 
-          buyer_dni = $2, 
-          buyer_phone = $3
-      WHERE (id = $4 OR ticket_code = $4 OR ('#' || LPAD(ticket_number::text, 4, '0')) = $4 OR ticket_number::text = $4)
-    `;
-    const params: any[] = [cleanName, cleanDni, cleanPhone, id];
-
-    if (req.user?.role !== 'super_admin') {
-      params.push(req.user?.id);
-      query += ` AND seller_admin_id = $${params.length}`;
-    }
-
-    query += ` RETURNING 
-        id, 
-        ticket_number as number, 
-        ('#' || LPAD(ticket_number::text, 4, '0')) as "formattedNumber", 
-        ticket_code as "verificationCode", 
-        raffle_id as "raffleId", 
-        buyer_name as "buyerName", 
-        buyer_dni as dni, 
-        buyer_phone as phone, 
-        payment_method as "paymentMethod", 
-        price_paid as price, 
-        status, 
-        sold_at as timestamp, 
-        verification_hash as "verificationHash"`;
-
-    const result = await db.query(query, params);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Boleto no encontrado o no tiene permisos para modificarlo.' });
-    }
-
-    const updated = result.rows[0];
-
-    // Registrar en auditoría de PostgreSQL
-    const auditId = `aud-${Date.now()}`;
-    const auditHash = crypto.createHash('sha256').update(`UPDATE_TICKET_${id}_${cleanDni}`).digest('hex');
-    await db.query(
-      `INSERT INTO audit_logs (id, action, performed_by, target, details, hash_signature, previous_hash)
-       VALUES ($1, 'ACTUALIZAR_TICKET', $2, $3, $4, $5, 'GENESIS')`,
-      [
-        auditId,
-        req.user?.name || 'ADMIN',
-        `Ticket ${updated.formattedNumber}`,
-        JSON.stringify({ buyerName: cleanName, dni: cleanDni, phone: cleanPhone }),
-        auditHash,
-      ]
-    );
-
-    res.json({ 
-      success: true, 
-      message: 'Ticket actualizado exitosamente.',
-      ticket: updated
-    });
-  } catch (error: any) {
-    console.error('Error updating ticket:', error);
-    res.status(500).json({ error: 'Error al actualizar el ticket en la base de datos.' });
-  }
+router.put('/:id',async(req:AuthRequest,res)=>{
+ if(!buyerValid(req.body))return res.status(400).json({error:'Nombre, DNI de 8 dígitos y celular de 9 dígitos requeridos.'});
+ return transaction(req,res,async c=>{
+  const scope=await c.query('SELECT raffle_id FROM tickets WHERE id=$1',[req.params.id]);
+  if(!scope.rows.length){await c.query('ROLLBACK');return res.status(404).json({error:'Boleto no encontrado.'});}
+  await c.query('SELECT id FROM raffles WHERE id=$1 FOR SHARE',[scope.rows[0].raffle_id]);
+  const b=req.body;
+  const result=await c.query(`UPDATE tickets SET buyer_name=$1,buyer_dni=$2,buyer_phone=$3 WHERE id=$4 AND ($5='super_admin' OR seller_admin_id=$6) RETURNING *`,[b.buyerName.trim().toUpperCase(),b.dni.trim(),b.phone.trim(),req.params.id,req.user!.role,req.user!.id]);
+  if(!result.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Boleto no encontrado o sin permisos.'});}
+  await c.query('UPDATE prizes SET winner_name=$1,winner_phone=$2 WHERE winner_ticket_id=$3',[b.buyerName.trim().toUpperCase(),b.phone.trim(),req.params.id]);
+  await audit(c,req,'ACTUALIZAR_TICKET',req.params.id,{buyerName:b.buyerName.trim().toUpperCase(),dni:b.dni.trim(),phone:b.phone.trim()});
+  const ticket=(await c.query('SELECT '+columns+' FROM tickets t WHERE id=$1',[req.params.id])).rows[0];
+  await c.query('COMMIT');res.json({success:true,ticket});
+ });
 });
-
-// DELETE /api/tickets/:id - Anular ticket
-router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    await db.query(`UPDATE tickets SET status = 'cancelled' WHERE id = $1`, [id]);
-    res.json({ success: true, message: 'Ticket anulado correctamente.' });
-  } catch (error: any) {
-    console.error('Error cancelling ticket:', error);
-    res.status(500).json({ error: 'Error al anular el ticket.' });
-  }
-});
-
+router.delete('/:id',async(req:AuthRequest,res)=>transaction(req,res,async c=>{
+ const scope=await c.query('SELECT raffle_id FROM tickets WHERE id=$1',[req.params.id]);
+ if(!scope.rows.length){await c.query('ROLLBACK');return res.status(404).json({error:'Boleto no encontrado.'});}
+ await c.query('SELECT id FROM raffles WHERE id=$1 FOR SHARE',[scope.rows[0].raffle_id]);
+ const r=await c.query(`UPDATE tickets SET status='cancelled' WHERE id=$1 AND ($2='super_admin' OR seller_admin_id=$3) AND id NOT IN(SELECT winner_ticket_id FROM prizes WHERE winner_ticket_id IS NOT NULL) RETURNING id`,[req.params.id,req.user!.role,req.user!.id]);
+ if(!r.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Boleto no encontrado, premiado o sin permisos.'});}
+ await audit(c,req,'ANULAR_TICKET',req.params.id,{status:'cancelled'});await c.query('COMMIT');res.json({success:true});
+}));
 export default router;

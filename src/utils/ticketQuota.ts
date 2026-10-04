@@ -18,12 +18,12 @@ export interface AdminBooklet {
  * ...
  * Admin 31: #0601 al #0620
  */
-export const getAdminBooklet = (adminIdentifier?: string | null): AdminBooklet => {
-  let n = 2; // Por defecto Jheyson (Admin 2) si no se especifica
+export const getAdminBooklet = (adminIdentifier?: string | null, assignedNumber?: number): AdminBooklet => {
+  let n = assignedNumber || 0; // Por defecto Jheyson (Admin 2) si no se especifica
 
-  if (adminIdentifier) {
+  if (!assignedNumber && adminIdentifier) {
     const clean = adminIdentifier.trim();
-    const admMatch = clean.match(/adm-(\d+)/i);
+    const admMatch = clean.match(/^adm-([1-9]|[12][0-9]|3[01])$/i);
     if (admMatch) {
       n = parseInt(admMatch[1], 10);
     } else {
@@ -39,7 +39,7 @@ export const getAdminBooklet = (adminIdentifier?: string | null): AdminBooklet =
   }
 
   // Asegurar rango válido [1, 31]
-  n = Math.max(1, Math.min(31, n));
+  if (!Number.isInteger(n) || n <= 0) return { adminNumber: 0, adminName: 'Sin asignación', adminDni: '', startNumber: 1, endNumber: 0, label: 'Sin talonario asignado' };
 
   const adminInfo = RAW_ADMIN_DATA.find(a => a.n === n) || RAW_ADMIN_DATA[1];
   const startNumber = (n - 1) * 20 + 1;
@@ -64,7 +64,7 @@ export const getAdminAvailableNumbers = (
 ): number[] => {
   const occupiedNumbers = new Set(
     existingTickets
-      .filter(t => t.number >= booklet.startNumber && t.number <= booklet.endNumber && t.isValid !== false)
+      .filter(t => t.number >= booklet.startNumber && t.number <= booklet.endNumber)
       .map(t => t.number)
   );
 

@@ -65,8 +65,8 @@ export const SuperAdminProfileModal: React.FC<Props> = ({
         email: email.trim(),
         phone: phone.trim(),
         dni: currentUser?.dni || '70905188',
-        currentPassword: currentPassword.trim() || undefined,
-        newPassword: newPassword.trim() || undefined,
+        currentPassword: currentPassword || undefined,
+        newPassword: newPassword || undefined,
       });
 
       setSuccessMessage('¡Perfil y credenciales actualizados exitosamente!');

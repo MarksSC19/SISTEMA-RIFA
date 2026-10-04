@@ -58,11 +58,9 @@ export const AdminPanelView: React.FC<Props> = ({
   const [ticketToEdit, setTicketToEdit] = useState<Ticket | null>(null);
 
   // Si el usuario es un admin operador (no superadmin), sus tickets mostrados y contados son EXCLUSIVAMENTE los suyos
-  const myTickets = currentUser?.role === 'super_admin'
-    ? tickets
-    : tickets.filter(t => (t.sellerAdminId && t.sellerAdminId === currentUser?.id) || t.registeredBy === currentUser?.name);
+  const myTickets = tickets.filter(t => t.isValid !== false && t.sellerAdminId === currentUser?.id);
 
-  const soldCount = myTickets.length;
+  const soldCount = myTickets.filter(t=>t.isValid!==false).length;
   const adminTargetQuota = currentUser?.assignedQuota || 20;
   const freeCount = Math.max(0, adminTargetQuota - soldCount);
   const totalRevenue = soldCount * raffle.ticketPrice;
@@ -86,7 +84,7 @@ export const AdminPanelView: React.FC<Props> = ({
 
   const handleDeleteTicketClick = (t: Ticket) => {
     if (onDeleteTicket && window.confirm(`¿Está seguro de anular el ticket ${t.formattedNumber} emitido a ${t.buyerName}? Esta acción restará 1 ticket vendido y registrará la anulación en auditoría.`)) {
-      onDeleteTicket(t.id);
+      Promise.resolve(onDeleteTicket(t.id)).catch((e: Error) => alert(e.message));
     }
   };
 

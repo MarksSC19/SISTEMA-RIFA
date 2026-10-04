@@ -11,6 +11,14 @@ function getAuthHeader(): Record<string, string> {
 }
 
 export const api = {
+  async getRaffles() { const r=await fetch(API_BASE+'/raffles',{headers:getAuthHeader()}); const d=await r.json(); if(!r.ok)throw new Error(d.error);return d; },
+  async createRaffle(raffle:any){return this.mutate('/raffles','POST',raffle);},
+  async deleteRaffle(id:string){return this.mutate('/raffles/'+encodeURIComponent(id),'DELETE');},
+  async createPrize(prize:any){return this.mutate('/prizes','POST',prize);},
+  async deletePrize(id:string){return this.mutate('/prizes/'+encodeURIComponent(id),'DELETE');},
+  async mutate(path:string,method:string,body?:any){const r=await fetch(API_BASE+path,{method,headers:{'Content-Type':'application/json',...getAuthHeader()},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo guardar.');return d;},
+  async saveRaffle(raffle: any) { const r=await fetch(API_BASE+'/raffles/'+encodeURIComponent(raffle.id),{method:'PUT',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify(raffle)});const d=await r.json();if(!r.ok)throw new Error(d.error);return d; },
+
   // --- AUTENTICACIÓN ---
   async login(email: string, password: string) {
     const res = await fetch(`${API_BASE}/auth/login`, {
@@ -42,6 +50,7 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al cambiar contraseña');
+    if (data.token) localStorage.setItem('rifas_jwt_token', data.token);
     return data;
   },
 
@@ -72,15 +81,15 @@ export const api = {
   },
 
   // --- ADMINISTRADORES (31 OPERADORES) ---
-  async getAdmins() {
-    const res = await fetch(`${API_BASE}/admins`, {
+  async getAdmins(includeArchived = true) {
+    const res = await fetch(`${API_BASE}/admins?includeArchived=${includeArchived}`, {
       headers: { ...getAuthHeader() },
     });
     if (!res.ok) throw new Error('Error al cargar administradores');
     return res.json();
   },
 
-  async createAdmin(data: { name: string; dni: string; email: string; password?: string }) {
+  async createAdmin(data: { name: string; dni: string; email: string; password?: string; assignedRaffleId?: string; assignedQuota?: number; allowSameName?: boolean }) {
     const res = await fetch(`${API_BASE}/admins`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -97,8 +106,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error al actualizar administrador');
-    return res.json();
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al actualizar administrador');
+    return result;
   },
 
   async deleteAdmin(id: string) {
@@ -106,8 +116,9 @@ export const api = {
       method: 'DELETE',
       headers: { ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error('Error al eliminar administrador');
-    return res.json();
+    const result=await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al retirar administrador');
+    return result;
   },
 
   // --- PREMIOS OFICIALES (7 PREMIOS) ---
@@ -117,7 +128,7 @@ export const api = {
     return res.json();
   },
 
-  async updatePrize(id: string, data: { name?: string; category?: string; description?: string }) {
+  async updatePrize(id: string, data: { name?: string; category?: string; description?: string; order?: number; link?: string }) {
     const res = await fetch(`${API_BASE}/prizes/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -127,10 +138,11 @@ export const api = {
     return res.json();
   },
 
-  async resetDraws() {
+  async resetDraws(raffleId: string = 'rf-024') {
     const res = await fetch(`${API_BASE}/prizes/reset`, {
       method: 'POST',
-      headers: { ...getAuthHeader() },
+      headers: { 'Content-Type':'application/json', ...getAuthHeader() },
+      body:JSON.stringify({raffleId}),
     });
     if (!res.ok) throw new Error('Error al reiniciar sorteos');
     return res.json();
@@ -138,7 +150,7 @@ export const api = {
 
   // --- TICKETS Y VENTAS (CUOTA DE 20 POR ADMIN) ---
   async getTickets(sellerId?: string) {
-    const url = sellerId ? `${API_BASE}/tickets?sellerId=${sellerId}` : `${API_BASE}/tickets`;
+    const url = sellerId ? `${API_BASE}/tickets?sellerId=${encodeURIComponent(sellerId)}` : `${API_BASE}/tickets`;
     const res = await fetch(url, {
       headers: { ...getAuthHeader() },
     });
@@ -154,6 +166,7 @@ export const api = {
     paymentReference?: string;
     sellerAdminId?: string;
     quantity?: number;
+    raffleId?: string;
   }) {
     const res = await fetch(`${API_BASE}/tickets`, {
       method: 'POST',
@@ -181,8 +194,9 @@ export const api = {
       method: 'DELETE',
       headers: { ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error('Error al anular ticket');
-    return res.json();
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al anular ticket');
+    return result;
   },
 
   // --- SORTEO CRIPTOGRÁFICO EN VIVO (CSPRNG) ---
@@ -198,8 +212,8 @@ export const api = {
   },
 
   // --- VERIFICACIÓN PÚBLICA QR (SIN LOGIN) ---
-  async verifyPublicTicket(code: string) {
-    const res = await fetch(`${API_BASE}/public/verify/${encodeURIComponent(code)}`);
+  async verifyPublicTicket(code: string, authenticated = false) {
+    const res = await fetch(`${API_BASE}/public/verify/${encodeURIComponent(code)}`,{headers:authenticated?getAuthHeader():{}});
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Código de boleto no válido');
     return data;

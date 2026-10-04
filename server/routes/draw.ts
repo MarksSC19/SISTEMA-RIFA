@@ -2,22 +2,30 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import db from '../db';
 import { requireSuperAdmin, AuthRequest } from '../middleware/authMiddleware';
+import { writeAudit } from '../adminOperations';
 
 const router = Router();
 
 // POST /api/draw/execute - Ejecución oficial del sorteo con CSPRNG
 router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  const client = await db.getClient();
+  let client: any;
   try {
+    client = await db.getClient();
     const { prizeId, allowRedraw } = req.body;
+    if(allowRedraw!==undefined&&typeof allowRedraw!=='boolean')return res.status(400).json({error:'La autorización de nuevo sorteo debe ser booleana.'});
     if (!prizeId) {
       return res.status(400).json({ error: 'Debe especificar el prizeId a sortear.' });
     }
 
     await client.query('BEGIN');
+    const scope = await client.query('SELECT raffle_id FROM prizes WHERE id=$1',[prizeId]);
+    if(!scope.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Premio no encontrado.'});}
+    const raffleId=scope.rows[0].raffle_id;
+    const campaign=(await client.query('SELECT id,status FROM raffles WHERE id=$1 FOR UPDATE',[raffleId])).rows[0];
+    if(!campaign||!['activa','cerrada','sorteo'].includes(campaign.status)){await client.query('ROLLBACK');return res.status(409).json({error:'La campaña no está habilitada para sorteo.'});}
 
     // 1. Verificar estado del premio
-    const prizeRes = await client.query('SELECT * FROM prizes WHERE id = $1', [prizeId]);
+    const prizeRes = await client.query("SELECT * FROM prizes WHERE id = $1 FOR UPDATE", [prizeId]);
     if (prizeRes.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Premio no encontrado.' });
@@ -27,8 +35,8 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
     const isReDraw = Boolean(prize.winner_ticket_id);
 
     if (prize.winner_ticket_id && !allowRedraw) {
-      // Si ya tiene ganador pero se invoca el sorteo directo, se asume re-sorteo administrativo
-      console.log(`[Draw] Re-sorteando premio ${prize.title} (anterior ganador: ${prize.winner_name})`);
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este premio ya tiene ganador. Autorice explícitamente un nuevo sorteo.' });
     }
 
     // 2. Obtener tickets válidos y vendidos que aún no hayan ganado otro premio diferente a este
@@ -45,10 +53,10 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
         u.dni as "sellerDni"
       FROM tickets t
       LEFT JOIN users u ON u.id = t.seller_admin_id
-      WHERE t.raffle_id = 'rf-024' 
+      WHERE t.raffle_id = $2 
         AND t.status = 'valid'
-        AND t.id NOT IN (SELECT winner_ticket_id FROM prizes WHERE winner_ticket_id IS NOT NULL AND id != $1)
-    `, [prizeId]);
+        AND t.id NOT IN (SELECT winner_ticket_id FROM prizes WHERE winner_ticket_id IS NOT NULL AND raffle_id = $2 AND id != $1)
+    `, [prizeId, raffleId]);
 
     const candidates = candidatesRes.rows;
     if (candidates.length === 0) {
@@ -73,27 +81,15 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
     );
 
     // 5. Registrar en auditoría
-    const auditId = `aud-${Date.now()}`;
-    const auditHash = crypto.createHash('sha256').update(`DRAW_${prizeId}_${winningTicket.id}_${Date.now()}`).digest('hex');
-    await client.query(
-      `INSERT INTO audit_logs (id, action, performed_by, target, details, hash_signature, previous_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, 'GENESIS')`,
-      [
-        auditId,
-        isReDraw ? 'RE_SORTEO_OFICIAL_CSPRNG' : 'SORTEO_OFICIAL_CSPRNG',
-        req.user?.name || 'SUPERADMIN',
-        prize.title,
-        JSON.stringify({
+    await writeAudit(client,req,isReDraw ? 'RE_SORTEO_OFICIAL_CSPRNG' : 'SORTEO_OFICIAL_CSPRNG',prizeId,{
           position: prize.position,
           ticketCode: winningTicket.verificationCode,
           winner: winningTicket.buyerName,
           totalEligible: candidates.length,
           drawnAt: drawnAt.toISOString(),
           isReDraw,
-        }),
-        auditHash,
-      ]
-    );
+          previousWinner:prize.winner_ticket_id,
+        });
 
     await client.query('COMMIT');
 
@@ -121,11 +117,11 @@ router.post('/execute', requireSuperAdmin, async (req: AuthRequest, res: Respons
       totalParticipants: candidates.length,
     });
   } catch (error: any) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     console.error('Error executing draw:', error);
     res.status(500).json({ error: 'Error durante la ejecución del sorteo.' });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 

@@ -77,23 +77,17 @@ export default function App() {
 
   // Tickets state
   const [tickets, setTickets] = useState<Ticket[]>(() => {
-    if (!isUpToDate) return INITIAL_TICKETS;
-    const saved = localStorage.getItem('rifas_app_tickets');
-    return saved ? JSON.parse(saved) : INITIAL_TICKETS;
+    return [];
   });
 
   // Admins state (31 admins with quota = 20)
   const [admins, setAdmins] = useState<AdminUser[]>(() => {
-    if (!isUpToDate) return INITIAL_ADMINS;
-    const saved = localStorage.getItem('rifas_app_admins');
-    return saved ? JSON.parse(saved) : INITIAL_ADMINS;
+    return [];
   });
   
   // Audit Logs state
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    if (!isUpToDate) return INITIAL_AUDIT;
-    const saved = localStorage.getItem('rifas_app_audit');
-    return saved ? JSON.parse(saved) : INITIAL_AUDIT;
+    return [];
   });
 
   // Mark data as updated
@@ -125,15 +119,14 @@ export default function App() {
         return 'verification';
       }
     }
-    return 'super_admin';
+    return currentUser?.role==='admin'?'admin':'super_admin';
   });
 
   const [selectedRaffleId, setSelectedRaffleId] = useState<string>('rf-024');
   const [selectedPrizeIdForDraw, setSelectedPrizeIdForDraw] = useState<string | undefined>(undefined);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  const [selectedTicketForVerify, setSelectedTicketForVerify] = useState<Ticket>(() => {
-    return tickets[0] || INITIAL_TICKETS[0];
-  });
+  const [selectedTicketForVerify, setSelectedTicketForVerify] = useState<Ticket | undefined>(undefined);
+  const [syncError,setSyncError] = useState('');
 
   // Sincronización en tiempo real con la base de datos de producción (PostgreSQL :5433)
   useEffect(() => {
@@ -146,7 +139,7 @@ export default function App() {
         ]);
 
         if (isMounted) {
-          if (backendPrizes && Array.isArray(backendPrizes) && backendPrizes.length > 0) {
+          if (backendPrizes && Array.isArray(backendPrizes)) {
             setPrizes(backendPrizes);
           }
           if (backendConfig && backendConfig.organizationName) {
@@ -154,21 +147,24 @@ export default function App() {
           }
         }
 
-        if (currentUser) {
-          const [backendAdmins, backendTickets, backendAudit] = await Promise.all([
-            api.getAdmins().catch(() => null),
+        if (currentUser && !currentUser.mustChangePassword) {
+          const [backendAdmins, backendTickets, backendAudit, backendRaffles] = await Promise.all([
+            currentUser.role==='super_admin' ? api.getAdmins().catch(() => null) : Promise.resolve([]),
             api.getTickets().catch(() => null),
-            api.getAuditLogs().catch(() => null),
+            currentUser.role === 'super_admin' ? api.getAuditLogs().catch(() => null) : Promise.resolve([]),
+            api.getRaffles().catch(() => null),
           ]);
 
           if (isMounted) {
-            if (backendAdmins && Array.isArray(backendAdmins) && backendAdmins.length > 0) {
+            setSyncError(backendTickets===null || backendRaffles===null || backendAdmins===null || backendAudit===null ? 'No se pudo actualizar la información del servidor. Las operaciones requieren conexión.' : '');
+            if (backendRaffles) setRaffles(backendRaffles);
+            if (backendAdmins && Array.isArray(backendAdmins)) {
               setAdmins(backendAdmins);
             }
-            if (backendTickets && Array.isArray(backendTickets) && backendTickets.length > 0) {
+            if (backendTickets && Array.isArray(backendTickets)) {
               setTickets(backendTickets);
             }
-            if (backendAudit && Array.isArray(backendAudit) && backendAudit.length > 0) {
+            if (backendAudit && Array.isArray(backendAudit)) {
               setAuditLogs(backendAudit);
             }
           }
@@ -179,8 +175,16 @@ export default function App() {
     };
 
     syncWithDatabase();
+    const timer=setInterval(syncWithDatabase,15000);
+    return ()=>{isMounted=false;clearInterval(timer);};
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled=false;
+    api.getCurrentUser().then(({user})=>{if(!cancelled && JSON.stringify(user)!==JSON.stringify(currentUser))setCurrentUser(user);}).catch(()=>{if(!cancelled){api.logout();setCurrentUser(null);setTickets([]);setAdmins([]);}});
+    return ()=>{cancelled=true;};
+  }, [currentUser?.id]);
   // Sync to local storage
   useEffect(() => {
     try {
@@ -256,44 +260,27 @@ export default function App() {
         // 1. Intentar verificación en la API de producción
         try {
           const res = await api.verifyPublicTicket(query);
-          if (isMounted && res && res.valid && res.ticket) {
+          if (isMounted && res && res.ticket) {
             const t = res.ticket;
             const mapped: Ticket = {
               id: `t-${t.number}`,
               number: t.number,
               formattedNumber: t.formattedNumber,
-              raffleId: 'rf-024',
+              raffleId: t.raffleId || 'rf-024',
+              price: t.price,
               buyerName: t.buyerName,
               dni: t.dni,
               phone: '***-***-***',
-              timestamp: String(t.timestamp || new Date().toISOString()),
+              timestamp: String(t.issuedAt || t.timestamp || new Date().toISOString()),
               timeFormatted: new Date(t.timestamp || Date.now()).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
               verificationCode: t.verificationCode,
-              isValid: true,
+              isValid: Boolean(res.valid),
               registeredBy: t.registeredBy || 'Administrador Autorizado',
             };
             setSelectedTicketForVerify(mapped);
             return;
           }
-        } catch {
-          // Fallback en tickets locales
-        }
-
-        // 2. Fallback con tickets en memoria
-        if (isMounted) {
-          const qLower = query.toLowerCase();
-          const found = tickets.find(
-            t => t.verificationCode.toLowerCase() === qLower ||
-                 t.formattedNumber.toLowerCase() === qLower ||
-                 t.formattedNumber.replace('#', '') === qLower ||
-                 t.dni === query
-          );
-          if (found) {
-            setSelectedTicketForVerify(found);
-            const targetRaffle = raffles.find(r => r.id === found.raffleId);
-            if (targetRaffle) setSelectedRaffleId(targetRaffle.id);
-          }
-        }
+        } catch { if(isMounted)setSelectedTicketForVerify(undefined); }
       }
     };
 
@@ -310,17 +297,17 @@ export default function App() {
 
   // Talonario exclusivo preasignado para el operador en sesión (CERO colisiones de numeración)
   const currentAdminBooklet = getAdminBooklet(
-    currentUser?.dni || currentUser?.id || currentUser?.name
+    currentUser?.dni || currentUser?.id || currentUser?.name, currentUser?.bookletNumber
   );
   const currentAdminAvailableNumbers = getAdminAvailableNumbers(
     currentAdminBooklet,
-    tickets
+    tickets.filter(t=>t.raffleId===activeRaffle.id)
   );
   const nextTicketNumber = currentAdminAvailableNumbers.length > 0 
     ? currentAdminAvailableNumbers[0] 
     : currentAdminBooklet.startNumber;
   const availableQuota = currentAdminAvailableNumbers.length;
-  const currentAdminSold = Math.max(0, 20 - availableQuota);
+  const currentAdminSold = tickets.filter(t=>t.sellerAdminId===currentUser?.id && t.raffleId===activeRaffle.id && t.isValid!==false).length;
 
   // Login handler
   const handleLogin = (user: AuthUser) => {
@@ -348,12 +335,14 @@ export default function App() {
   // Logout handler
   const handleLogout = () => {
     setCurrentUser(null);
+    setTickets([]); setAdmins([]); setAuditLogs([]);
     localStorage.removeItem('rifas_auth_user');
     localStorage.removeItem('rifas_jwt_token');
   };
 
   // Raffle CRUD
-  const handleSaveRaffle = (savedRaffle: Raffle) => {
+  const handleSaveRaffle = async (savedRaffle: Raffle) => {
+    if (!raffles.some(r=>r.id===savedRaffle.id)) await api.createRaffle(savedRaffle); else await api.saveRaffle(savedRaffle);
     setRaffles(prev => {
       const idx = prev.findIndex(r => r.id === savedRaffle.id);
       if (idx >= 0) {
@@ -377,7 +366,8 @@ export default function App() {
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const handleDeleteRaffle = (raffleId: string) => {
+  const handleDeleteRaffle = async (raffleId: string) => {
+    try{await api.deleteRaffle(raffleId);}catch(e:any){alert(e.message);return;}
     const target = raffles.find(r => r.id === raffleId);
     setRaffles(prev => prev.filter(r => r.id !== raffleId));
     setPrizes(prev => prev.filter(p => p.raffleId !== raffleId));
@@ -400,42 +390,19 @@ export default function App() {
   // Admin CRUD
   const handleSaveAdmin = async (savedAdmin: AdminUser, password?: string, isNew?: boolean) => {
     const shouldCreate = Boolean(isNew || !savedAdmin.id || savedAdmin.id.startsWith('adm-new'));
+    const before=admins.find(a=>a.id===savedAdmin.id);
+    const normalize=(name:string)=>name.trim().replace(/\s+/g,' ').toUpperCase();
+    const checkDuplicate=shouldCreate || before?.archivedAt || (before && normalize(before.name)!==normalize(savedAdmin.name));
+    const duplicate=checkDuplicate && admins.find(a=>a.id!==savedAdmin.id&&!a.archivedAt&&normalize(a.name)===normalize(savedAdmin.name));
+    const allowSameName=!!duplicate && window.confirm(`Ya existe ${duplicate.name} con DNI ${duplicate.dni}. ¿Confirmas que la cuenta con DNI ${savedAdmin.dni} corresponde a otra persona?`);
+    if(duplicate&&!allowSameName)throw new Error('Revise la cuenta existente antes de guardar.');
 
-    // 1. Actualización local inmediata
-    setAdmins(prev => {
-      const idx = prev.findIndex(a => (savedAdmin.id && a.id === savedAdmin.id) || (savedAdmin.dni && a.dni === savedAdmin.dni));
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = { ...copy[idx], ...savedAdmin };
-        return copy;
-      }
-      return [...prev, savedAdmin];
-    });
-
-    // 2. Persistencia en la Base de Datos PostgreSQL
-    try {
-      if (shouldCreate) {
-        const res = await api.createAdmin({
-          name: savedAdmin.name,
-          dni: savedAdmin.dni || '',
-          email: savedAdmin.email,
-          password: password && password.trim().length > 0 ? password.trim() : (savedAdmin.dni || '12345678'),
-        });
-        if (res && res.id) {
-          savedAdmin.id = res.id;
-          setAdmins(prev => prev.map(a => (a.dni === savedAdmin.dni || a.id === savedAdmin.id) ? { ...a, id: res.id } : a));
-        }
-      } else {
-        await api.updateAdmin(savedAdmin.id, {
-          name: savedAdmin.name,
-          dni: savedAdmin.dni,
-          email: savedAdmin.email,
-          status: savedAdmin.status,
-          password: password && password.trim().length > 0 ? password.trim() : undefined,
-        });
-      }
-    } catch (apiErr: any) {
-      console.error('Error al persistir administrador en base de datos:', apiErr);
+    if (shouldCreate) {
+      const created=await api.createAdmin({name:savedAdmin.name,dni:savedAdmin.dni || '',email:savedAdmin.email,password,assignedQuota:savedAdmin.assignedQuota,assignedRaffleId:savedAdmin.assignedRaffleId,allowSameName});
+      setAdmins(prev=>[...prev,created]);
+    } else {
+      await api.updateAdmin(savedAdmin.id,{name:savedAdmin.name,dni:savedAdmin.dni,email:savedAdmin.email,status:savedAdmin.status,password,assignedQuota:savedAdmin.assignedQuota,assignedRaffleId:savedAdmin.assignedRaffleId,allowSameName,restore:!!before?.archivedAt&&!savedAdmin.archivedAt});
+      setAdmins(await api.getAdmins());
     }
 
     const now = new Date();
@@ -453,12 +420,13 @@ export default function App() {
 
   const handleDeleteAdmin = async (adminId: string) => {
     const target = admins.find(a => a.id === adminId);
-    setAdmins(prev => prev.filter(a => a.id !== adminId));
+
 
     try {
       await api.deleteAdmin(adminId);
+      setAdmins(await api.getAdmins());
     } catch (apiErr) {
-      console.error('Error al eliminar admin en BD:', apiErr);
+      alert((apiErr as Error).message); return;
     }
 
     if (target) {
@@ -477,7 +445,9 @@ export default function App() {
   };
 
   // Prize CRUD
-  const handleSavePrize = (prize: Prize) => {
+  const handleSavePrize = async (prize: Prize) => {
+    if (!prizes.some(p=>p.id===prize.id)) await api.createPrize(prize);
+    else await api.updatePrize(prize.id,{name:prize.name,category:prize.category,description:prize.description,order:prize.order,link:prize.link});
     setPrizes(prev => {
       const idx = prev.findIndex(p => p.id === prize.id);
       if (idx >= 0) {
@@ -501,7 +471,8 @@ export default function App() {
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const handleDeletePrize = (prizeId: string) => {
+  const handleDeletePrize = async (prizeId: string) => {
+    try{await api.deletePrize(prizeId);}catch(e:any){alert(e.message);return;}
     const target = prizes.find(p => p.id === prizeId);
     setPrizes(prev => prev.filter(p => p.id !== prizeId));
 
@@ -539,13 +510,12 @@ export default function App() {
     if (currentUser) {
       setAdmins(prev => prev.map(a => {
         if (
-          (currentUser.email && a.email.toLowerCase() === currentUser.email.toLowerCase()) || 
-          (currentUser.dni && a.dni === currentUser.dni) || 
-          a.name === currentUser.name
+          newTickets.some(t=>t.sellerAdminId===a.id && t.raffleId===a.assignedRaffleId)
         ) {
           return {
             ...a,
-            totalSold: (a.totalSold || 0) + count,
+            totalSold: (a.totalSold || 0) + newTickets.filter(t=>t.sellerAdminId===a.id&&t.raffleId===a.assignedRaffleId).length,
+            totalCollected: (a.totalCollected || 0) + newTickets.filter(t=>t.sellerAdminId===a.id&&t.raffleId===a.assignedRaffleId).reduce((sum,t)=>sum+Number(t.price||0),0),
           };
         }
         return a;
@@ -563,7 +533,7 @@ export default function App() {
       action: 'Emisión de Tickets',
       user: currentUser?.name || 'Marks',
       raffle: activeRaffle.code,
-      detail: `Boletos ${numRange} emitidos a ${first.buyerName} (DNI ${first.dni}). Total: S/ ${(count * 10).toFixed(2)}.`,
+      detail: `Boletos ${numRange} emitidos a ${first.buyerName} (DNI ${first.dni}). Total: S/ ${newTickets.reduce((sum,t)=>sum+Number(t.price||0),0).toFixed(2)}.`,
     };
     setAuditLogs(prev => [newLog, ...prev]);
   };
@@ -575,14 +545,14 @@ export default function App() {
   const handleUpdateTicket = async (updatedTicket: Ticket) => {
     try {
       // 1. Persistir directamente en base de datos PostgreSQL
-      await api.updateTicket(updatedTicket.id, {
+      const result = await api.updateTicket(updatedTicket.id, {
         buyerName: updatedTicket.buyerName,
         dni: updatedTicket.dni,
         phone: updatedTicket.phone,
       });
 
       // 2. Actualizar estado reactivo en memoria
-      setTickets(prev => prev.map(t => (t.id === updatedTicket.id || t.verificationCode === updatedTicket.verificationCode) ? updatedTicket : t));
+      setTickets(prev => prev.map(t => (t.id === updatedTicket.id || t.verificationCode === updatedTicket.verificationCode) ? { ...t, ...result.ticket } : t));
 
       // 3. Registrar auditoría local
       const now = new Date();
@@ -602,11 +572,12 @@ export default function App() {
     }
   };
 
-  const handleDeleteTicket = (ticketId: string) => {
+  const handleDeleteTicket = async (ticketId: string) => {
     const target = tickets.find(t => t.id === ticketId);
     if (!target) return;
 
-    setTickets(prev => prev.filter(t => t.id !== ticketId));
+    try { await api.cancelTicket(ticketId); } catch (e: any) { alert(e.message); return; }
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, isValid: false, status: 'cancelled' } : t));
 
     setRaffles(prev => prev.map(r => {
       if (r.id === target.raffleId) {
@@ -620,10 +591,11 @@ export default function App() {
 
     if (target.registeredBy) {
       setAdmins(prev => prev.map(a => {
-        if (a.name === target.registeredBy) {
+        if (a.id === target.sellerAdminId && a.assignedRaffleId===target.raffleId) {
           return {
             ...a,
             totalSold: Math.max(0, (a.totalSold || 0) - 1),
+            totalCollected: Math.max(0,(a.totalCollected||0)-Number(target.price||0)),
           };
         }
         return a;
@@ -644,7 +616,8 @@ export default function App() {
   };
 
   // Config Update
-  const handleSaveConfig = (newConfig: SystemConfig) => {
+  const handleSaveConfig = async (newConfig: SystemConfig) => {
+    await api.updateConfig(newConfig);
     setConfig(newConfig);
 
     const now = new Date();
@@ -731,7 +704,10 @@ export default function App() {
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const handleToggleRaffleStatus = (raffleId: string) => {
+  const handleToggleRaffleStatus = async (raffleId: string) => {
+    const target=raffles.find(r=>r.id===raffleId);
+    if(!target)return;
+    try { await api.saveRaffle({...target,status:target.status==='activa'?'cerrada':'activa'}); } catch(e:any){alert(e.message);return;}
     setRaffles(prev => prev.map(r => {
       if (r.id === raffleId) {
         const nextStatus = r.status === 'activa' ? 'cerrada' : 'activa';
@@ -743,12 +719,13 @@ export default function App() {
 
   const handleResetPrizes = async (raffleId: string) => {
     try {
-      await api.resetDraws();
+      await api.resetDraws(raffleId);
     } catch (err) {
-      console.warn('Reset local de premios:', err);
+      alert((err as Error).message);
+      return;
     }
     setPrizes(prev => prev.map(p => {
-      if (p.raffleId === raffleId || raffleId === 'rf-024') {
+      if (p.raffleId === raffleId) {
         return {
           ...p,
           isDrawn: false,
@@ -786,7 +763,8 @@ export default function App() {
       }`}
     >
       {/* Dynamic Views Rendering */}
-      {currentView === 'super_admin' && currentUser && (
+      {syncError && <div role="alert" className="p-3 text-sm bg-amber-50 text-amber-800">{syncError}</div>}
+      {currentView === 'super_admin' && currentUser?.role === 'super_admin' && (
         <SuperAdminView
           raffles={raffles}
           admins={admins}
@@ -843,7 +821,7 @@ export default function App() {
       {currentView === 'live_draw' && currentUser && (
         <LiveDrawView
           raffle={activeRaffle}
-          tickets={tickets.filter(t => (t.raffleId === activeRaffle?.id || t.raffleId === 'rf-024' || !t.raffleId) && t.status !== 'anulado' && t.isValid !== false)}
+          tickets={tickets.filter(t => t.raffleId === activeRaffle?.id && t.isValid !== false)}
           prizes={prizes}
           initialPrizeId={selectedPrizeIdForDraw}
           onBack={() => setCurrentView(currentUser.role === 'super_admin' ? 'super_admin' : 'admin')}
@@ -879,6 +857,8 @@ export default function App() {
         nextTicketNumber={nextTicketNumber}
         raffleTitle={activeRaffle?.title || ''}
         raffleCode={activeRaffle?.code || ''}
+        raffleId={activeRaffle.id}
+        ticketPrice={activeRaffle.ticketPrice}
         onTicketCreated={handleTicketCreated}
         onTicketsCreated={handleTicketsCreated}
         registeredByName={currentUser?.name}
