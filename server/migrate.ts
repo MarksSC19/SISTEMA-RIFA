@@ -24,6 +24,8 @@ async function migrate() {
     try { await client.query(schemaSql); await client.query('COMMIT'); }
     catch(error) { await client.query('ROLLBACK'); throw error; }
     console.log('Schema applied successfully!');
+    const archiveCheck=await client.query("SELECT EXISTS(SELECT 1 FROM users WHERE id='adm-23-alt' AND archived_at IS NOT NULL) AS historical_duplicate_archived");
+    console.log('Functional migration checks:', archiveCheck.rows[0]);
 
     const tables = await client.query(`
       SELECT table_name 

@@ -1,5 +1,24 @@
 # Auditoría funcional — 3 de octubre de 2026
 
+## Correcciones aplicadas posteriormente
+
+El usuario autorizó aplicar y desplegar las correcciones. Se resolvió la fusión local conservando la autenticación segura. El código se publicó desde una copia limpia basada en main remoto para evitar publicar los reportes locales de producción.
+
+- Retirada recuperable de administradores con filtro de archivados y restauración; boletos válidos y anulados conservados; supervisor protegido por rol.
+- Confirmación explícita de nombres repetidos para permitir homónimos legítimos sin crear duplicados accidentalmente.
+- Migración conservadora de la cuenta alternativa histórica: solo la archiva si coincide con la cuenta sintética conocida, existe la original y no tiene ningún boleto. No modifica el DNI de la titular ni reasigna sus ventas.
+- Métricas por ID y campaña, con suma del precio pagado. Las metas cuentan vendedores activos, incluido el supervisor que tiene talonario. La recaudación histórica permanece aunque se archive o desactive una cuenta.
+- Capacidad ampliada al crear/reasignar administradores y migrar talonarios existentes; campañas nuevas no heredan cuotas de otras campañas.
+- Auditoría administrativa transaccional y conservación de resultados anteriores al reiniciar premios; validación estricta de autorización y estados de sorteo.
+- Verificación anónima por código de QR con nombre/DNI enmascarados y sin exponer otros códigos del comprador; búsqueda completa para sesiones autorizadas, limitada al propietario para operadores.
+- Panel del vendedor conserva precios históricos y disponibilidad excluye números anulados.
+
+Validación: 97 comprobaciones HTTP con PGlite, incluidas transacciones revertidas al fallar auditoría, archivo/restauración con ventas, homónimos, campañas, privacidad pública, precios mixtos y migración repetible con protección de historial. TypeScript y build correctos. Prueba visual con cuentas ficticias: retirada, filtro de archivados, restauración y conservación de un boleto de S/ 12 tras recargar. Permanece advertencia de tamaño del bundle (~634 kB).
+
+El primer despliegue nuevo (`3bab0af`) quedó Live en Render y respondió versión 1.5.0, PostgreSQL conectado, 66 boletos y S/ 660. El despliegue final se está verificando; su resultado se registra al finalizar este trabajo. No se ejecutaron ventas, sorteos ni cambios de contraseñas reales para probar.
+
+Los hallazgos siguientes describen el estado ANTERIOR a estas correcciones.
+
 Repositorio: MarksSC19/SISTEMA-RIFA. Se actualizó origin con `git fetch origin`; main remoto apunta a `1404b476ad4c07263d3b7a70abebf93980b32353`. La copia local está en `91fa90c`, con una fusión pendiente y conflicto en `server/routes/auth.ts`. Esta revisión no resuelve la fusión ni modifica datos reales.
 
 ## Caso de Rosa: causa y alcance

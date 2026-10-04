@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Raffle, Ticket, Prize, AuthUser } from '../types';
 import { TicketEditModal } from './TicketEditModal';
+import {getAdminBooklet,getAdminAvailableNumbers} from '../utils/ticketQuota';
 
 interface Props {
   raffle: Raffle;
@@ -58,12 +59,12 @@ export const AdminPanelView: React.FC<Props> = ({
   const [ticketToEdit, setTicketToEdit] = useState<Ticket | null>(null);
 
   // Si el usuario es un admin operador (no superadmin), sus tickets mostrados y contados son EXCLUSIVAMENTE los suyos
-  const myTickets = tickets.filter(t => t.isValid !== false && t.sellerAdminId === currentUser?.id);
+  const myTickets = tickets.filter(t => t.isValid !== false && t.status!=='cancelled' && t.sellerAdminId === currentUser?.id && t.raffleId===raffle.id);
 
   const soldCount = myTickets.filter(t=>t.isValid!==false).length;
   const adminTargetQuota = currentUser?.assignedQuota || 20;
-  const freeCount = Math.max(0, adminTargetQuota - soldCount);
-  const totalRevenue = soldCount * raffle.ticketPrice;
+  const freeCount = getAdminAvailableNumbers(getAdminBooklet(currentUser?.id||'',currentUser?.bookletNumber),tickets.filter(t=>t.raffleId===raffle.id)).length;
+  const totalRevenue = myTickets.reduce((sum,t)=>sum+Number(t.price||0),0);
   const progressPercent = Math.min(100, Math.round((soldCount / adminTargetQuota) * 100));
 
   const rafflePrizes = prizes
@@ -90,7 +91,7 @@ export const AdminPanelView: React.FC<Props> = ({
 
   const ticketsSoldByThisAdmin = myTickets.length;
   const quotaProgress = Math.min(100, Math.round((ticketsSoldByThisAdmin / adminTargetQuota) * 100));
-  const remainingTickets = Math.max(0, adminTargetQuota - ticketsSoldByThisAdmin);
+  const remainingTickets = freeCount;
 
   return (
     <div id="admin-panel-container" className="max-w-2xl mx-auto px-4 py-6 md:py-8 font-['Geist',sans-serif]">
@@ -169,13 +170,13 @@ export const AdminPanelView: React.FC<Props> = ({
                 {ticketsSoldByThisAdmin} / {adminTargetQuota} tks
               </span>
               <span className="font-mono text-xs font-bold text-[#059669] bg-[#ECFDF5] px-1.5 py-0.2 rounded border border-[#A7F3D0]">
-                S/ {(ticketsSoldByThisAdmin * raffle.ticketPrice).toLocaleString()}
+                S/ {totalRevenue.toLocaleString()}
               </span>
             </div>
             <span className={`text-[10px] block font-bold mt-0.5 ${
               ticketsSoldByThisAdmin >= adminTargetQuota ? 'text-[#059669]' : 'text-[#D97706]'
             }`}>
-              {ticketsSoldByThisAdmin >= adminTargetQuota ? '🎉 ¡Meta cumplida!' : `Faltan ${remainingTickets} tks (S/ ${(remainingTickets * raffle.ticketPrice).toLocaleString()})`}
+              {ticketsSoldByThisAdmin >= adminTargetQuota ? '🎉 ¡Meta cumplida!' : `${remainingTickets} números sin emitir (S/ ${(remainingTickets * raffle.ticketPrice).toLocaleString()}). Los anulados no se reutilizan.`}
             </span>
           </div>
         </div>

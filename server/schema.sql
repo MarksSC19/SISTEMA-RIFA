@@ -124,3 +124,9 @@ WITH retired AS (
     'Cuenta alternativa creada por código de arranque anterior; sin boletos. Cuenta recuperable; DNI de titular no modificado.',
     'MIGRATION-2026-10-03','GENESIS' FROM retired
   ON CONFLICT(id) DO NOTHING;
+
+-- Include pre-existing booklets and historical numbers in each campaign's
+-- capacity too; creating a new operator is not the only allocation path.
+UPDATE raffles r SET total_tickets=GREATEST(r.total_tickets,
+  COALESCE((SELECT MAX(booklet_number)*20 FROM users u WHERE u.assigned_raffle_id=r.id AND u.archived_at IS NULL),20),
+  COALESCE((SELECT MAX(ticket_number) FROM tickets t WHERE t.raffle_id=r.id),20));

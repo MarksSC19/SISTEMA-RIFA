@@ -43,7 +43,8 @@ app.get('/api/health', async (req, res) => {
     const dbTest = await db.query('SELECT NOW() as time, count(*)::int as total_tickets FROM tickets');
     res.json({
       status: 'ok',
-      version: '1.4.1',
+      version: '1.5.0',
+      deployedCommit: process.env.RENDER_GIT_COMMIT || null,
       environment: process.env.NODE_ENV || 'development',
       serverTime: new Date().toISOString(),
       postgresConnected: true,
@@ -53,7 +54,7 @@ app.get('/api/health', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({
       status: 'error',
-      version: '1.4.1',
+      version: '1.5.0',
       postgresConnected: false,
       message: err.message,
     });
