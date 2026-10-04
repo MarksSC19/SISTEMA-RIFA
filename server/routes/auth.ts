@@ -51,7 +51,7 @@ const RAW_ADMIN_DATA = [
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    const rawIdentifier = req.body.identifier || req.body.email || '';
+    const rawIdentifier = req.body.identifier || req.body.email || req.body.username || req.body.dni || '';
     const rawPassword = req.body.password || '';
     const cleanId = String(rawIdentifier).trim();
     const cleanPassword = String(rawPassword).trim();
