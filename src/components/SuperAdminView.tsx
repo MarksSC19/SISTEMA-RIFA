@@ -262,7 +262,11 @@ export const SuperAdminView: React.FC<Props> = ({
   });
 
   const selectedBookletAdmin = admins.find(a=>a.id===ticketSellerFilter);
-  const selectedBooklet = selectedBookletAdmin ? getAdminBooklet(selectedBookletAdmin.dni || selectedBookletAdmin.id,selectedBookletAdmin.bookletNumber) : null;
+    const selectedBooklet = selectedBookletAdmin ? getAdminBooklet(selectedBookletAdmin.dni || selectedBookletAdmin.id,selectedBookletAdmin.bookletNumber) : null;
+    const selectedOwnedTickets = tickets.filter(t=>t.sellerAdminId===selectedBookletAdmin?.id && t.raffleId===currentCampaign?.id).sort((a,b)=>a.number-b.number);
+    const selectedHistoricalTickets = selectedBooklet ? selectedOwnedTickets.filter(t=>t.number<selectedBooklet.startNumber||t.number>selectedBooklet.endNumber) : [];
+    const selectedSoldCount = selectedOwnedTickets.filter(t=>t.isValid!==false && t.status!=='cancelled').length;
+    const selectedRemainingQuota = Math.max(0,(selectedBookletAdmin?.assignedQuota||20)-selectedSoldCount);
   const filteredSalesTickets = (tickets || []).filter(t => {
     const matchesSearch = 
       t.buyerName.toLowerCase().includes(ticketSearch.toLowerCase()) ||
@@ -858,8 +862,18 @@ export const SuperAdminView: React.FC<Props> = ({
                 {/* AUDITORÍA Y CONTROL DE ÚLTIMAS VENTAS POR ADMINISTRADOR */}
                 <div id="booklet-review" className="scroll-mt-4">
                   {selectedBooklet && selectedBookletAdmin && <div className="bg-white border rounded-2xl p-5 mb-4">
-                    <h2 className="font-bold text-sm">Talonario de {selectedBookletAdmin.name}: {selectedBooklet.label}</h2>
+                    <h2 className="font-bold text-sm">Boletos de {selectedBookletAdmin.name}: {selectedSoldCount} vendidos de {selectedBookletAdmin.assignedQuota||20}</h2>
                     <p className="text-xs text-gray-500 my-2">Seleccione un boleto emitido para corregir el comprador. Los anulados conservan su número.</p>
+                    {selectedHistoricalTickets.length>0 && <div className="mb-4">
+                      <h3 className="font-semibold text-sm mb-2">Boletos anteriores conservados · números y códigos originales</h3>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {selectedHistoricalTickets.map(ticket=><button key={ticket.id} type="button" title={ticket.buyerName} onClick={()=>{setTicketToEdit(ticket);setIsTicketEditModalOpen(true);}} className={'p-2 rounded-lg border text-xs '+(ticket.isValid===false?'bg-red-50':'bg-emerald-50')}>
+                          {ticket.formattedNumber}<span className="block text-[10px] truncate">{ticket.buyerName}</span><span className="block text-[9px] break-all">{ticket.verificationCode}</span><span className="block text-[9px]">{ticket.isValid===false?'Anulado':'Emitido'}</span>
+                        </button>)}
+                      </div>
+                    </div>}
+                    <h3 className="font-semibold text-sm mb-2">{selectedHistoricalTickets.length?'Continuación para nuevas ventas':'Rango para emisiones'}: {selectedBooklet.label}</h3>
+                    <p className="text-xs text-gray-600 mb-2">Saldo de cuota: {selectedRemainingQuota} boletos. Las ventas anteriores cuentan dentro de la misma cuota. Los números de otros vendedores no se reasignan.</p>
                     <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
                       {Array.from({length:20},(_,i)=>selectedBooklet.startNumber+i).map(number=>{
                         const ticket=tickets.find(t=>t.number===number && t.sellerAdminId===selectedBookletAdmin.id && t.raffleId===currentRaffle?.id);
@@ -869,7 +883,6 @@ export const SuperAdminView: React.FC<Props> = ({
                         </button>;
                       })}
                     </div>
-                    {tickets.some(t=>t.sellerAdminId===selectedBookletAdmin.id && t.raffleId===currentRaffle?.id && (t.number<selectedBooklet.startNumber||t.number>selectedBooklet.endNumber)) && <p className="text-xs text-amber-700 mt-3">Este administrador tiene boletos históricos fuera de su rango actual. Se conservan y aparecen en la tabla para revisión.</p>}
                   </div>}
                 </div>
                 <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-xs overflow-hidden">

@@ -299,15 +299,15 @@ export default function App() {
   const currentAdminBooklet = getAdminBooklet(
     currentUser?.dni || currentUser?.id || currentUser?.name, currentUser?.bookletNumber
   );
+  const currentAdminSold = tickets.filter(t=>t.sellerAdminId===currentUser?.id && t.raffleId===activeRaffle.id && t.isValid!==false && t.status!=='cancelled').length;
   const currentAdminAvailableNumbers = getAdminAvailableNumbers(
     currentAdminBooklet,
     tickets.filter(t=>t.raffleId===activeRaffle.id)
-  );
+  ).slice(0,Math.max(0,(currentUser?.assignedQuota||20)-currentAdminSold));
   const nextTicketNumber = currentAdminAvailableNumbers.length > 0 
     ? currentAdminAvailableNumbers[0] 
     : currentAdminBooklet.startNumber;
   const availableQuota = currentAdminAvailableNumbers.length;
-  const currentAdminSold = tickets.filter(t=>t.sellerAdminId===currentUser?.id && t.raffleId===activeRaffle.id && t.isValid!==false).length;
 
   // Login handler
   const handleLogin = (user: AuthUser) => {

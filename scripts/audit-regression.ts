@@ -163,6 +163,15 @@ try {
   const firstPrice=await request('POST','/tickets',{...buyer,raffleId:'rf-small'},defaultChanged.token,201);assert.equal(firstPrice.price,12);
   await request('PUT','/raffles/rf-small',{...small,totalTickets:defaultAdmin.bookletNumber*20,ticketPrice:15},s.token);
   const secondPrice=await request('POST','/tickets',{...buyer,raffleId:'rf-small'},defaultChanged.token,201);assert.equal(secondPrice.price,15);
+  // Historical sales outside the new range consume the same quota and retain their codes.
+  await query('UPDATE tickets SET ticket_number=1001 WHERE id=$1',[firstPrice.id]);
+  await query('UPDATE tickets SET ticket_number=1002 WHERE id=$1',[secondPrice.id]);
+  await request('POST','/tickets',{...buyer,raffleId:'rf-small',quantity:19},defaultChanged.token,400);
+  const historicalSales=await request('GET','/tickets?raffleId=rf-small',undefined,defaultChanged.token);
+  assert.equal(historicalSales.length,2);
+  assert.deepEqual(historicalSales.map((t:any)=>t.verificationCode).sort(),[firstPrice.verificationCode,secondPrice.verificationCode].sort());
+  await query('UPDATE tickets SET ticket_number=$1 WHERE id=$2',[firstPrice.number,firstPrice.id]);
+  await query('UPDATE tickets SET ticket_number=$1 WHERE id=$2',[secondPrice.number,secondPrice.id]);
   // A repeat buyer gets distinct persistent tickets, including after login and migration.
   assert.notEqual(firstPrice.id,secondPrice.id);
   assert.notEqual(firstPrice.verificationCode,secondPrice.verificationCode);

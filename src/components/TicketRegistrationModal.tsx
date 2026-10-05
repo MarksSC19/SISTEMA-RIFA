@@ -63,7 +63,7 @@ export const TicketRegistrationModal: React.FC<Props> = ({
   const [qrUrl, setQrUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  const effectiveAvailable = availableNumbers.length > 0 ? availableNumbers.length : maxAvailable;
+  const effectiveAvailable = Math.min(maxAvailable,availableNumbers.length > 0 ? availableNumbers.length : maxAvailable);
   const maxAllowed = Math.min(20, Math.max(1, effectiveAvailable));
 
   // Ajustar cantidad si excede el cupo disponible

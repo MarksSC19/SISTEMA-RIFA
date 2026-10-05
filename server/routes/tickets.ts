@@ -51,6 +51,9 @@ router.post('/',async(req:AuthRequest,res)=>{
   if(end>raffle.total_tickets)return stop(409,'Amplíe el total de números de la rifa para incluir este talonario.');
   const used=await c.query('SELECT ticket_number FROM tickets WHERE raffle_id=$1 AND ticket_number BETWEEN $2 AND $3',[raffleId,start,end]);
   const occupied=new Set(used.rows.map((r:any)=>r.ticket_number));const free=Array.from({length:20},(_,i)=>start+i).filter(n=>!occupied.has(n));
+  const sold=(await c.query("SELECT COUNT(*)::int AS count FROM tickets WHERE raffle_id=$1 AND seller_admin_id=$2 AND status='valid'",[raffleId,sellerId])).rows[0].count;
+  const remaining=Math.max(0,Number(seller.quota)-Number(sold));
+  if(quantity>remaining)return stop(400,'Cuota insuficiente: quedan '+remaining+' boletos por vender, contando las ventas anteriores.');
   if(quantity>free.length)return stop(400,'Talonario insuficiente: quedan '+free.length+' números sin emitir.');
   const created=[];
   for(const number of free.slice(0,quantity)){

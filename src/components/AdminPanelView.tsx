@@ -63,7 +63,7 @@ export const AdminPanelView: React.FC<Props> = ({
 
   const soldCount = myTickets.filter(t=>t.isValid!==false).length;
   const adminTargetQuota = currentUser?.assignedQuota || 20;
-  const freeCount = getAdminAvailableNumbers(getAdminBooklet(currentUser?.id||'',currentUser?.bookletNumber),tickets.filter(t=>t.raffleId===raffle.id)).length;
+  const freeCount = Math.min(Math.max(0,adminTargetQuota-soldCount),getAdminAvailableNumbers(getAdminBooklet(currentUser?.id||'',currentUser?.bookletNumber),tickets.filter(t=>t.raffleId===raffle.id)).length);
   const totalRevenue = myTickets.reduce((sum,t)=>sum+Number(t.price||0),0);
   const progressPercent = Math.min(100, Math.round((soldCount / adminTargetQuota) * 100));
 
@@ -347,7 +347,8 @@ export const AdminPanelView: React.FC<Props> = ({
         <div className="flex flex-col sm:flex-row gap-2.5">
           <button
             id="register-ticket-trigger-btn"
-            onClick={onOpenRegisterModal}
+             onClick={onOpenRegisterModal}
+             disabled={freeCount===0}
             className="flex-1 py-3.5 px-5 bg-[#0F1115] hover:bg-[#23272F] text-white font-semibold text-sm rounded-xl transition-all duration-150 flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-99"
           >
             <Plus className="w-4 h-4 text-[#10B981]" />
