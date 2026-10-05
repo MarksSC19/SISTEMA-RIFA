@@ -220,5 +220,40 @@ try {
   const capacity=(await query("SELECT total_tickets FROM raffles WHERE id='rf-024'")).rows[0].total_tickets;
   const assignedMaximum=(await query("SELECT MAX(booklet_number)*20 AS needed FROM users WHERE assigned_raffle_id='rf-024' AND archived_at IS NULL")).rows[0].needed;
   assert.ok(capacity>=assignedMaximum);assert.ok((await query("SELECT total_tickets FROM raffles WHERE id='rf-small'")).rows[0].total_tickets>=600);
+  // Future operators receive independent booklets and all issued QR codes persist.
+  await request('POST','/raffles',{...newRaffle,id:'rf-recovery',code:'RECOVERY',status:'activa'},s.token,201);
+  const recovering=await request('POST','/admins',{name:'RECOVERY TEST',dni:'14141414',email:'recovery@example.com',assignedRaffleId:'rf-recovery'},s.token,201);
+  const receipt={number:555,verificationCode:'RF-555TMAR',buyerName:'TEST BUYER',dni:'44444444',phone:'',price:10,issuedAt:'2026-10-01T02:10:00Z'};
+  const recoveryBody={sellerAdminId:recovering.id,raffleId:'rf-recovery',receipts:[receipt]};
+  await request('POST','/tickets/recover-legacy',recoveryBody,b.token,401);
+  const recoveryResult=await request('POST','/tickets/recover-legacy',recoveryBody,s.token);assert.equal(recoveryResult.created,1);
+  const recoveryRetry=await request('POST','/tickets/recover-legacy',recoveryBody,s.token);assert.equal(recoveryRetry.created,0);assert.equal(recoveryRetry.alreadyPresent,1);
+  const recoveredVerification=await request('GET','/public/verify/'+receipt.verificationCode);assert.equal(recoveredVerification.valid,true);assert.equal(recoveredVerification.ticket.number,555);assert.equal(new Date(recoveredVerification.ticket.issuedAt).getTime(),Date.parse(receipt.issuedAt));
+  await request('POST','/tickets/recover-legacy',{...recoveryBody,receipts:[receipt,receipt]},s.token,400);
+  await request('POST','/tickets/recover-legacy',{...recoveryBody,receipts:[{...receipt,number:556,verificationCode:'RF-5563H78'}, {...receipt,verificationCode:'RF-555AAAA'}]},s.token,409);
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM tickets WHERE raffle_id='rf-recovery'")).rows[0].n,1);
+  failAudit=true;
+  await request('POST','/tickets/recover-legacy',{...recoveryBody,receipts:[{...receipt,number:557,verificationCode:'RF-557A54H'}]},s.token,503);
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM tickets WHERE raffle_id='rf-recovery'")).rows[0].n,1);
+  await request('POST','/prizes',{...newPrize,id:'p-recovery',raffleId:'rf-recovery'},s.token,201);
+  const recoveredWinner=await request('POST','/draw/execute',{prizeId:'p-recovery'},s.token);assert.equal(recoveredWinner.winner.verificationCode,receipt.verificationCode);
+  await request('POST','/tickets/recover-legacy',recoveryBody,s.token,409);
+  await request('POST','/raffles',{...newRaffle,id:'rf-future',code:'FUTURE',status:'activa'},s.token,201);
+  const futureNumbers=new Set<number>();
+  for(const [i,dni] of ['12121212','13131313'].entries()){
+    const future=await request('POST','/admins',{name:'FUTURE OPERATOR '+i,dni,email:'future-'+i+'@example.com',assignedRaffleId:'rf-future'},s.token,201);
+    const initial=await login(dni,dni);
+    const authorized=await request('POST','/auth/change-password',{currentPassword:dni,newPassword:'Future2026!'},initial.token);
+    const sales=await request('POST','/tickets',{...buyer,raffleId:'rf-future',quantity:20},authorized.token,201);
+    assert.equal(sales.createdTickets.length,20);
+    for(const t of sales.createdTickets){
+      assert.ok(!futureNumbers.has(t.number));futureNumbers.add(t.number);
+      assert.ok(t.number>=(future.bookletNumber-1)*20+1&&t.number<=future.bookletNumber*20);
+      const verified=await request('GET','/public/verify/'+t.verificationCode);
+      assert.equal(verified.valid,true);assert.equal(verified.ticket.number,t.number);
+    }
+    await request('POST','/tickets',{...buyer,raffleId:'rf-future'},authorized.token,400);
+  }
+  assert.equal(futureNumbers.size,40);
   console.log('PASS: '+checks+' comprobaciones HTTP + migración repetible, numeración, cuotas y persistencia.');
 } finally { await new Promise<void>(resolve=>server.close(()=>resolve()));await pg.close();await db.pool.end(); }

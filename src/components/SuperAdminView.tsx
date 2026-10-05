@@ -42,6 +42,7 @@ import { SuperAdminProfileModal } from './SuperAdminProfileModal';
 import { TicketEditModal } from './TicketEditModal';
 import {getAdminBooklet} from '../utils/ticketQuota';
 import {adminMetrics,activeSellers} from '../utils/adminMetrics';
+import {LegacyReceiptRecovery} from './LegacyReceiptRecovery';
 
 interface Props {
   raffles: Raffle[];
@@ -874,6 +875,7 @@ export const SuperAdminView: React.FC<Props> = ({
                     </div>}
                     <h3 className="font-semibold text-sm mb-2">{selectedHistoricalTickets.length?'Continuación para nuevas ventas':'Rango para emisiones'}: {selectedBooklet.label}</h3>
                     <p className="text-xs text-gray-600 mb-2">Saldo de cuota: {selectedRemainingQuota} boletos. Las ventas anteriores cuentan dentro de la misma cuota. Los números de otros vendedores no se reasignan.</p>
+                    <LegacyReceiptRecovery key={selectedBookletAdmin.id} sellerId={selectedBookletAdmin.id} raffleId={currentRaffle?.id||''}/>
                     <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
                       {Array.from({length:20},(_,i)=>selectedBooklet.startNumber+i).map(number=>{
                         const ticket=tickets.find(t=>t.number===number && t.sellerAdminId===selectedBookletAdmin.id && t.raffleId===currentRaffle?.id);

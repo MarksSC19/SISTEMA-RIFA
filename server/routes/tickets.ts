@@ -66,6 +66,36 @@ router.post('/',async(req:AuthRequest,res)=>{
   await c.query('COMMIT');res.status(201).json({...created[0],createdTickets:created,quantity,totalPaid:quantity*Number(raffle.ticket_price)});
  });
 });
+router.post('/recover-legacy',async(req:AuthRequest,res)=>{
+ if(req.user!.role!=='super_admin')return res.status(403).json({error:'Solo el supervisor puede recuperar comprobantes.'});
+ const {sellerAdminId,raffleId,receipts}=req.body;
+ if(typeof sellerAdminId!=='string'||typeof raffleId!=='string'||!Array.isArray(receipts)||!receipts.length||receipts.length>20)return res.status(400).json({error:'Indique vendedor, campaña y entre 1 y 20 comprobantes.'});
+ const codes=new Set(),numbers=new Set();
+ for(const r of receipts){
+  if(!r||!Number.isInteger(r.number)||r.number<1||typeof r.verificationCode!=='string'||!new RegExp('^RF-'+r.number+'[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$').test(r.verificationCode)||typeof r.buyerName!=='string'||!r.buyerName.trim()||r.buyerName.length>128||typeof r.dni!=='string'||!/^\d{8}$/.test(r.dni)||typeof r.phone!=='string'||(r.phone!==''&&!/^\d{9}$/.test(r.phone))||typeof r.issuedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(r.issuedAt)||!Number.isFinite(Date.parse(r.issuedAt))||Date.parse(r.issuedAt)>Date.now()||typeof r.price!=='number'||r.price<=0||r.price>100000||codes.has(r.verificationCode)||numbers.has(r.number))return res.status(400).json({error:'Comprobante inválido o repetido. Revise código original, número, comprador, DNI, fecha, monto y celular (puede quedar vacío si se desconoce).'});
+  codes.add(r.verificationCode);numbers.add(r.number);
+ }
+ return transaction(req,res,async c=>{
+  const stop=async(error:string)=>{await c.query('ROLLBACK');res.status(409).json({error});};
+  const raffle=(await c.query('SELECT * FROM raffles WHERE id=$1 FOR UPDATE',[raffleId])).rows[0];
+  if(!raffle||!['activa','cerrada'].includes(raffle.status)||(await c.query('SELECT id FROM prizes WHERE raffle_id=$1 AND winner_ticket_id IS NOT NULL',[raffleId])).rowCount)return stop('No se recuperan ventas durante o después del sorteo.');
+  const seller=(await c.query('SELECT * FROM users WHERE id=$1 FOR UPDATE',[sellerAdminId])).rows[0];
+  if(!seller||seller.archived_at||seller.status!=='active'||seller.assigned_raffle_id!==raffleId)return stop('Vendedor inactivo o no asignado a la campaña.');
+  const pending=[];const recovered=[];
+  for(const r of receipts){
+   if(r.number>raffle.total_tickets)return stop('Número fuera de la capacidad de la campaña.');
+   const existing=(await c.query('SELECT * FROM tickets WHERE LOWER(ticket_code)=LOWER($1) OR (raffle_id=$2 AND ticket_number=$3)',[r.verificationCode,raffleId,r.number])).rows;
+   if(existing.length){const t=existing[0];if(existing.length!==1||t.ticket_code!==r.verificationCode||t.ticket_number!==r.number||t.raffle_id!==raffleId||t.seller_admin_id!==sellerAdminId||t.buyer_dni!==r.dni||t.buyer_name!==r.buyerName.trim().toUpperCase()||t.status!=='valid'||Number(t.price_paid)!==r.price||new Date(t.sold_at).getTime()!==Date.parse(r.issuedAt))return stop('Conflicto: '+r.verificationCode+'. No se modificó ningún boleto.');recovered.push(t.id);}else pending.push(r);
+  }
+  const sold=Number((await c.query("SELECT COUNT(*)::int AS count FROM tickets WHERE seller_admin_id=$1 AND raffle_id=$2 AND status='valid'",[sellerAdminId,raffleId])).rows[0].count);
+  if(sold+pending.length>seller.quota)return stop('La recuperación excedería la cuota del vendedor.');
+  for(const r of pending){const id=crypto.randomUUID();const hash=crypto.createHash('sha256').update(id+'|'+r.verificationCode+'|'+raffleId+'|'+sellerAdminId+'|'+r.dni).digest('hex');
+   await c.query(`INSERT INTO tickets(id,ticket_number,ticket_code,raffle_id,seller_admin_id,buyer_name,buyer_phone,buyer_dni,payment_method,price_paid,verification_hash,sold_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'efectivo',$9,$10,$11)`,[id,r.number,r.verificationCode,raffleId,sellerAdminId,r.buyerName.trim().toUpperCase(),r.phone,r.dni,r.price,hash,r.issuedAt]);recovered.push(id);
+  }
+  if(pending.length)await audit(c,req,'RECUPERAR_COMPROBANTES_LOCALES',raffleId,{seller:sellerAdminId,source:'Comprobantes aportados y conciliados por supervisor',receipts:pending.map(r=>({code:r.verificationCode,number:r.number,issuedAt:r.issuedAt,price:r.price,missingPhone:r.phone===''})),recoveredAt:new Date().toISOString()});
+  await c.query('COMMIT');res.json({success:true,created:pending.length,alreadyPresent:receipts.length-pending.length,codes:receipts.map(r=>r.verificationCode)});
+ });
+});
 router.put('/:id',async(req:AuthRequest,res)=>{
  if(!buyerValid(req.body))return res.status(400).json({error:'Nombre, DNI de 8 dígitos y celular de 9 dígitos requeridos.'});
  return transaction(req,res,async c=>{
