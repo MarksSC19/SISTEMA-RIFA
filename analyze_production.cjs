@@ -1,3 +1,4 @@
+throw new Error('Diagnóstico histórico deshabilitado: probar DNI como contraseña podía restablecer claves en versiones antiguas. Consultar el panel autenticado; no inferir historial de acceso a partir de una prueba de contraseña.');
 const fs = require('fs');
 
 async function analyzeProduction() {

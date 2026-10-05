@@ -163,6 +163,18 @@ try {
   const firstPrice=await request('POST','/tickets',{...buyer,raffleId:'rf-small'},defaultChanged.token,201);assert.equal(firstPrice.price,12);
   await request('PUT','/raffles/rf-small',{...small,totalTickets:defaultAdmin.bookletNumber*20,ticketPrice:15},s.token);
   const secondPrice=await request('POST','/tickets',{...buyer,raffleId:'rf-small'},defaultChanged.token,201);assert.equal(secondPrice.price,15);
+  // A repeat buyer gets distinct persistent tickets, including after login and migration.
+  assert.notEqual(firstPrice.id,secondPrice.id);
+  assert.notEqual(firstPrice.verificationCode,secondPrice.verificationCode);
+  const passwordBefore=(await query('SELECT password_hash,must_change_password FROM users WHERE id=$1',[defaultAdmin.id])).rows[0];
+  await request('POST','/auth/login',{identifier:'88888888',password:'88888888'},undefined,401);
+  assert.deepEqual((await query('SELECT password_hash,must_change_password FROM users WHERE id=$1',[defaultAdmin.id])).rows[0],passwordBefore);
+  await pg.exec(fs.readFileSync('server/schema.sql','utf8'));
+  assert.deepEqual((await query('SELECT password_hash,must_change_password FROM users WHERE id=$1',[defaultAdmin.id])).rows[0],passwordBefore);
+  const relogged=await login('88888888','Different2026!');
+  assert.equal(relogged.user.mustChangePassword,false);
+  const repeatBuyerTickets=await request('GET','/tickets?raffleId=rf-small',undefined,relogged.token);
+  assert.deepEqual(repeatBuyerTickets.map((t:any)=>t.verificationCode).sort(),[firstPrice.verificationCode,secondPrice.verificationCode].sort());
   const sellerMetrics=(await request('GET','/admins',undefined,s.token)).find((u:any)=>u.id===defaultAdmin.id);
   assert.equal(sellerMetrics.totalCollected,27);assert.equal(sellerMetrics.totalSold,2);
   await request('PUT','/raffles/rf-small',{...small,totalTickets:20},s.token,400);
