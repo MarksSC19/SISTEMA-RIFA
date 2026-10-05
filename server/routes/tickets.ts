@@ -68,11 +68,14 @@ router.post('/',async(req:AuthRequest,res)=>{
 });
 router.post('/recover-legacy',async(req:AuthRequest,res)=>{
  if(req.user!.role!=='super_admin')return res.status(403).json({error:'Solo el supervisor puede recuperar comprobantes.'});
- const {sellerAdminId,raffleId,receipts}=req.body;
+ const {sellerAdminId,raffleId,receipts,relocations=[],reason}=req.body;
  if(typeof sellerAdminId!=='string'||typeof raffleId!=='string'||!Array.isArray(receipts)||!receipts.length||receipts.length>20)return res.status(400).json({error:'Indique vendedor, campaña y entre 1 y 20 comprobantes.'});
+ if(!Array.isArray(relocations)||relocations.length>20||((relocations.length||receipts.some((r:any)=>r?.originalNumber!==undefined&&r.originalNumber!==r.number))&&(typeof reason!=='string'||reason.trim().length<10||reason.length>1000)))return res.status(400).json({error:'Indique el motivo de la conciliación de números.'});
+ const moveCodes=new Set(),moveNumbers=new Set();
+ for(const m of relocations){if(!m||typeof m.verificationCode!=='string'||!Number.isInteger(m.fromNumber)||!Number.isInteger(m.toNumber)||m.fromNumber<1||m.toNumber<1||m.fromNumber===m.toNumber||typeof m.dni!=='string'||!/^\d{8}$/.test(m.dni)||moveCodes.has(m.verificationCode)||moveNumbers.has(m.toNumber))return res.status(400).json({error:'Traslado inválido o repetido.'});moveCodes.add(m.verificationCode);moveNumbers.add(m.toNumber);}
  const codes=new Set(),numbers=new Set();
  for(const r of receipts){
-  if(!r||!Number.isInteger(r.number)||r.number<1||typeof r.verificationCode!=='string'||!new RegExp('^RF-'+r.number+'[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$').test(r.verificationCode)||typeof r.buyerName!=='string'||!r.buyerName.trim()||r.buyerName.length>128||typeof r.dni!=='string'||!/^\d{8}$/.test(r.dni)||typeof r.phone!=='string'||(r.phone!==''&&!/^\d{9}$/.test(r.phone))||typeof r.issuedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(r.issuedAt)||!Number.isFinite(Date.parse(r.issuedAt))||Date.parse(r.issuedAt)>Date.now()||typeof r.price!=='number'||r.price<=0||r.price>100000||codes.has(r.verificationCode)||numbers.has(r.number))return res.status(400).json({error:'Comprobante inválido o repetido. Revise código original, número, comprador, DNI, fecha, monto y celular (puede quedar vacío si se desconoce).'});
+  if(!r||!Number.isInteger(r.number)||r.number<1||!Number.isInteger(r.originalNumber??r.number)||(r.originalNumber??r.number)<1||typeof r.verificationCode!=='string'||!new RegExp('^RF-'+(r.originalNumber??r.number)+'[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$').test(r.verificationCode)||typeof r.buyerName!=='string'||!r.buyerName.trim()||r.buyerName.length>128||typeof r.dni!=='string'||!/^\d{8}$/.test(r.dni)||typeof r.phone!=='string'||(r.phone!==''&&!/^\d{9}$/.test(r.phone))||typeof r.issuedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(r.issuedAt)||!Number.isFinite(Date.parse(r.issuedAt))||Date.parse(r.issuedAt)>Date.now()||typeof r.price!=='number'||r.price<=0||r.price>100000||codes.has(r.verificationCode)||numbers.has(r.number)||moveCodes.has(r.verificationCode)||moveNumbers.has(r.number))return res.status(400).json({error:'Comprobante inválido o repetido. Revise código original, número, comprador, DNI, fecha, monto y celular (puede quedar vacío si se desconoce).'});
   codes.add(r.verificationCode);numbers.add(r.number);
  }
  return transaction(req,res,async c=>{
@@ -81,9 +84,21 @@ router.post('/recover-legacy',async(req:AuthRequest,res)=>{
   if(!raffle||!['activa','cerrada'].includes(raffle.status)||(await c.query('SELECT id FROM prizes WHERE raffle_id=$1 AND winner_ticket_id IS NOT NULL',[raffleId])).rowCount)return stop('No se recuperan ventas durante o después del sorteo.');
   const seller=(await c.query('SELECT * FROM users WHERE id=$1 FOR UPDATE',[sellerAdminId])).rows[0];
   if(!seller||seller.archived_at||seller.status!=='active'||seller.assigned_raffle_id!==raffleId)return stop('Vendedor inactivo o no asignado a la campaña.');
+  const inBooklet=(n:number)=>!!seller.booklet_number&&n>=(seller.booklet_number-1)*20+1&&n<=seller.booklet_number*20&&n<=raffle.total_tickets;
+  const moved=[];
+  for(const m of relocations){
+   if(!inBooklet(m.fromNumber)||!inBooklet(m.toNumber))return stop('El traslado debe permanecer dentro del talonario del vendedor.');
+   const t=(await c.query('SELECT * FROM tickets WHERE ticket_code=$1 FOR UPDATE',[m.verificationCode])).rows[0];
+   if(!t||t.raffle_id!==raffleId||t.seller_admin_id!==sellerAdminId||t.buyer_dni!==m.dni||t.status!=='valid'||![m.fromNumber,m.toNumber].includes(t.ticket_number))return stop('El boleto a trasladar no coincide con el comprador y vendedor indicados.');
+   if(t.ticket_number===m.toNumber)continue;
+   if((await c.query('SELECT id FROM tickets WHERE raffle_id=$1 AND ticket_number=$2',[raffleId,m.toNumber])).rowCount)return stop('El número de destino del traslado está ocupado.');
+   await c.query('UPDATE tickets SET ticket_number=$1 WHERE id=$2',[m.toNumber,t.id]);
+   moved.push({id:t.id,code:t.ticket_code,dni:t.buyer_dni,fromNumber:m.fromNumber,toNumber:m.toNumber});
+  }
   const pending=[];const recovered=[];
   for(const r of receipts){
    if(r.number>raffle.total_tickets)return stop('Número fuera de la capacidad de la campaña.');
+   if(r.originalNumber!==undefined&&r.originalNumber!==r.number&&(!inBooklet(r.originalNumber)||!inBooklet(r.number)))return stop('La conciliación debe permanecer dentro del talonario del vendedor.');
    const existing=(await c.query('SELECT * FROM tickets WHERE LOWER(ticket_code)=LOWER($1) OR (raffle_id=$2 AND ticket_number=$3)',[r.verificationCode,raffleId,r.number])).rows;
    if(existing.length){const t=existing[0];if(existing.length!==1||t.ticket_code!==r.verificationCode||t.ticket_number!==r.number||t.raffle_id!==raffleId||t.seller_admin_id!==sellerAdminId||t.buyer_dni!==r.dni||t.buyer_name!==r.buyerName.trim().toUpperCase()||t.status!=='valid'||Number(t.price_paid)!==r.price||new Date(t.sold_at).getTime()!==Date.parse(r.issuedAt))return stop('Conflicto: '+r.verificationCode+'. No se modificó ningún boleto.');recovered.push(t.id);}else pending.push(r);
   }
@@ -92,8 +107,8 @@ router.post('/recover-legacy',async(req:AuthRequest,res)=>{
   for(const r of pending){const id=crypto.randomUUID();const hash=crypto.createHash('sha256').update(id+'|'+r.verificationCode+'|'+raffleId+'|'+sellerAdminId+'|'+r.dni).digest('hex');
    await c.query(`INSERT INTO tickets(id,ticket_number,ticket_code,raffle_id,seller_admin_id,buyer_name,buyer_phone,buyer_dni,payment_method,price_paid,verification_hash,sold_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'efectivo',$9,$10,$11)`,[id,r.number,r.verificationCode,raffleId,sellerAdminId,r.buyerName.trim().toUpperCase(),r.phone,r.dni,r.price,hash,r.issuedAt]);recovered.push(id);
   }
-  if(pending.length)await audit(c,req,'RECUPERAR_COMPROBANTES_LOCALES',raffleId,{seller:sellerAdminId,source:'Comprobantes aportados y conciliados por supervisor',receipts:pending.map(r=>({code:r.verificationCode,number:r.number,issuedAt:r.issuedAt,price:r.price,missingPhone:r.phone===''})),recoveredAt:new Date().toISOString()});
-  await c.query('COMMIT');res.json({success:true,created:pending.length,alreadyPresent:receipts.length-pending.length,codes:receipts.map(r=>r.verificationCode)});
+  if(pending.length||moved.length)await audit(c,req,'RECUPERAR_COMPROBANTES_LOCALES',raffleId,{seller:sellerAdminId,source:'Comprobantes aportados y conciliados por supervisor',reason,relocations:moved,receipts:pending.map(r=>({code:r.verificationCode,originalNumber:r.originalNumber??r.number,number:r.number,issuedAt:r.issuedAt,price:r.price,missingPhone:r.phone===''})),recoveredAt:new Date().toISOString()});
+  await c.query('COMMIT');res.json({success:true,created:pending.length,alreadyPresent:receipts.length-pending.length,relocated:moved.length,codes:receipts.map(r=>r.verificationCode)});
  });
 });
 router.put('/:id',async(req:AuthRequest,res)=>{

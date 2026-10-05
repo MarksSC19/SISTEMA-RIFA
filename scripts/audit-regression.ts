@@ -238,6 +238,38 @@ try {
   await request('POST','/prizes',{...newPrize,id:'p-recovery',raffleId:'rf-recovery'},s.token,201);
   const recoveredWinner=await request('POST','/draw/execute',{prizeId:'p-recovery'},s.token);assert.equal(recoveredWinner.winner.verificationCode,receipt.verificationCode);
   await request('POST','/tickets/recover-legacy',recoveryBody,s.token,409);
+  // A collided local receipt and an existing QR are reconciled atomically,
+  // without overwriting the legitimate owner of the original number.
+  await request('POST','/raffles',{...newRaffle,id:'rf-conciliate',code:'CONCILIATE',status:'activa'},s.token,201);
+  const conciliating=await request('POST','/admins',{name:'CONCILIATION TEST',dni:'15151515',email:'conciliate@example.com',assignedRaffleId:'rf-conciliate'},s.token,201);
+  const priorSales=await request('POST','/tickets',{...buyer,raffleId:'rf-conciliate',sellerAdminId:conciliating.id,quantity:3},s.token,201);
+  const [protectedSale,,movingSale]=priorSales.createdTickets;
+  const collisionReceipt={...receipt,originalNumber:protectedSale.number,number:movingSale.number,verificationCode:'RF-'+protectedSale.number+'AAAA',buyerName:'SECOND BUYER',dni:'45454545'};
+  const relocation={verificationCode:movingSale.verificationCode,dni:buyer.dni,fromNumber:movingSale.number,toNumber:movingSale.number+1};
+  const reconciliationBody={sellerAdminId:conciliating.id,raffleId:'rf-conciliate',receipts:[collisionReceipt],relocations:[relocation],reason:'Supervisor reconciled supplied original receipt and protected existing QR.'};
+  await request('POST','/tickets/recover-legacy',reconciliationBody,relogged.token,403);
+  await request('POST','/tickets/recover-legacy',{...reconciliationBody,reason:''},s.token,400);
+  await request('POST','/tickets/recover-legacy',{...reconciliationBody,relocations:[{...relocation,dni:'00000000'}]},s.token,409);
+  await request('POST','/tickets/recover-legacy',{...reconciliationBody,relocations:[{...relocation,toNumber:protectedSale.number}]},s.token,409);
+  await request('POST','/tickets/recover-legacy',{...reconciliationBody,relocations:[{...relocation,toNumber:protectedSale.number+20}]},s.token,409);
+  failAudit=true;
+  await request('POST','/tickets/recover-legacy',reconciliationBody,s.token,503);
+  assert.equal((await request('GET','/public/verify/'+movingSale.verificationCode)).ticket.number,movingSale.number);
+  await request('GET','/public/verify/'+collisionReceipt.verificationCode,undefined,undefined,404);
+  const reconciled=await request('POST','/tickets/recover-legacy',reconciliationBody,s.token);
+  assert.equal(reconciled.created,1);assert.equal(reconciled.relocated,1);
+  const collisionVerified=await request('GET','/public/verify/'+collisionReceipt.verificationCode);
+  assert.equal(collisionVerified.valid,true);assert.equal(collisionVerified.ticket.number,movingSale.number);assert.equal(collisionVerified.ticket.dni,'****4545');
+  const movedVerified=await request('GET','/public/verify/'+movingSale.verificationCode);
+  assert.equal(movedVerified.ticket.number,relocation.toNumber);assert.equal(movedVerified.ticket.verificationHash,movingSale.verificationHash);assert.equal(movedVerified.ticket.dni,'****4444');
+  assert.equal((await request('GET','/public/verify/'+protectedSale.verificationCode)).ticket.number,protectedSale.number);
+  const reconciliationRetry=await request('POST','/tickets/recover-legacy',reconciliationBody,s.token);assert.equal(reconciliationRetry.created,0);assert.equal(reconciliationRetry.relocated,0);
+  assert.equal((await request('GET','/tickets?sellerId='+conciliating.id,undefined,s.token)).length,4);
+  const reconciliationAudit=(await query("SELECT details FROM audit_logs WHERE action='RECUPERAR_COMPROBANTES_LOCALES' AND target='rf-conciliate'")).rows;
+  assert.equal(reconciliationAudit.length,1);assert.equal(JSON.parse(reconciliationAudit[0].details).relocations[0].toNumber,relocation.toNumber);
+  await request('POST','/prizes',{...newPrize,id:'p-conciliate',raffleId:'rf-conciliate'},s.token,201);
+  await request('POST','/draw/execute',{prizeId:'p-conciliate'},s.token);
+  await request('POST','/tickets/recover-legacy',reconciliationBody,s.token,409);
   await request('POST','/raffles',{...newRaffle,id:'rf-future',code:'FUTURE',status:'activa'},s.token,201);
   const futureNumbers=new Set<number>();
   for(const [i,dni] of ['12121212','13131313'].entries()){
