@@ -148,6 +148,10 @@ export default function App() {
         }
 
         if (currentUser && !currentUser.mustChangePassword) {
+          const {user: refreshedUser} = await api.getCurrentUser();
+          if (isMounted && JSON.stringify(refreshedUser)!==JSON.stringify(currentUser)) {
+            setCurrentUser(refreshedUser);
+          }
           const [backendAdmins, backendTickets, backendAudit, backendRaffles] = await Promise.all([
             currentUser.role==='super_admin' ? api.getAdmins().catch(() => null) : Promise.resolve([]),
             api.getTickets().catch(() => null),

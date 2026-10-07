@@ -126,6 +126,40 @@ WITH retired AS (
   ON CONFLICT(id) DO NOTHING;
 
 -- Include pre-existing booklets and historical numbers in each campaign's
+-- Repair depleted allocations without changing any issued ticket or QR.
+-- Migration runs in a transaction; block emissions and allocations while reserving.
+LOCK TABLE users, tickets, raffles IN SHARE ROW EXCLUSIVE MODE;
+DO $$
+DECLARE seller RECORD; sold INT; occupied INT; replacement INT;
+BEGIN
+  FOR seller IN SELECT u.* FROM users u JOIN raffles r ON r.id=u.assigned_raffle_id
+    WHERE u.archived_at IS NULL AND u.status='active' AND r.status='activa'
+    ORDER BY u.booklet_number
+  LOOP
+    SELECT count(*) INTO sold FROM tickets
+      WHERE seller_admin_id=seller.id AND raffle_id=seller.assigned_raffle_id AND status='valid';
+    SELECT count(*) INTO occupied FROM tickets
+      WHERE raffle_id=seller.assigned_raffle_id
+        AND ticket_number BETWEEN (seller.booklet_number-1)*20+1 AND seller.booklet_number*20;
+    IF LEAST(20,seller.quota)-sold > 20-occupied THEN
+      -- Skip blocks occupied by historical tickets, including cancelled tickets.
+      LOOP
+        replacement := nextval('booklet_number_seq');
+        EXIT WHEN NOT EXISTS(SELECT 1 FROM users WHERE booklet_number=replacement)
+          AND NOT EXISTS(SELECT 1 FROM tickets WHERE ticket_number BETWEEN (replacement-1)*20+1 AND replacement*20);
+      END LOOP;
+      UPDATE users SET booklet_number=replacement WHERE id=seller.id;
+      INSERT INTO audit_logs(id,action,performed_by,target,details,hash_signature,previous_hash)
+        VALUES('migration-booklet-'||seller.id||'-'||replacement,'CONTINUACION_TALONARIO','MIGRACION',seller.id,
+          json_build_object('previousBooklet',seller.booklet_number,'newBooklet',replacement,
+            'sold',sold,'remainingQuota',LEAST(20,seller.quota)-sold,
+            'reason','Rango ocupado por boletos conservados; números, códigos y titulares no modificados')::text,
+          'MIGRATION-2026-10-07','GENESIS');
+    END IF;
+  END LOOP;
+END $$;
+
+-- Include pre-existing booklets and historical numbers in each campaign's
 -- capacity too; creating a new operator is not the only allocation path.
 UPDATE raffles r SET total_tickets=GREATEST(r.total_tickets,
   COALESCE((SELECT MAX(booklet_number)*20 FROM users u WHERE u.assigned_raffle_id=r.id AND u.archived_at IS NULL),20),
